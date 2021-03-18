@@ -1,5 +1,6 @@
-use crate::instructions::Instruction;
+use crate::instructions::{Instruction, ExtensionWord};
 use crate::instructions::Instruction::{*};
+use crate::instructions::ExtensionWord::{*};
 
 // Specificity 16 - full word opcodes
 const _ANDICCR: u16 = 0x23c;
@@ -130,7 +131,11 @@ const _BCC: usize = 0x6;
 // - Signature 2, 2,3, 3, 3, 3
 const _MOVE: usize = 0x0;
 
-fn split_instruction(word: u16, lengths: Vec<usize>) -> Vec<usize> {
+// Extension word formats
+const _BEW: usize = 0x0;
+const _FEW: usize = 0x1;
+
+pub fn split_instruction(word: u16, lengths: Vec<usize>) -> Vec<usize> {
     let mut result = vec![0; lengths.len()];
     let mut bits = [0; 16];
     for j in 0..16 {
@@ -145,6 +150,18 @@ fn split_instruction(word: u16, lengths: Vec<usize>) -> Vec<usize> {
         } 
     }
     result
+}
+
+pub fn parse_extension_word(opcode: u16) -> Option<ExtensionWord> {
+    match split_instruction(opcode, vec![1, 3, 1, 2, 1, 8]).as_slice() {
+        [da, register, wl, scale, _BEW, displacement] => return Some(BEW { da: *da, register: *register, wl: *wl, scale: *scale, displacement: *displacement }),
+        _ => {}
+    }
+    match split_instruction(opcode, vec![1, 3, 1, 2, 1, 1, 1, 2, 1, 3]).as_slice() {
+        [da, register, wl, scale, _FEW, bs, is, bdsize, 0, iis] => return Some(FEW { da: *da, register: *register, wl: *wl, scale: *scale, bs: *bs, is: *is, bdsize: *bdsize, iis: *iis }),
+        _ => {}
+    }
+    None
 }
 
 pub fn parse_instruction(opcode: u16) -> Option<Instruction> {

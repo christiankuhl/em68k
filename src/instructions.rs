@@ -86,6 +86,32 @@ pub enum Instruction {
     MOVE { size: usize, destreg: usize, destmode: usize, srcmode: usize, srcreg: usize },
 }
 
+pub enum ExtensionWord {
+    BEW { da: usize, register: usize, wl: usize, scale: usize, displacement: usize },
+    FEW { da: usize, register: usize, wl: usize, scale: usize, bs: usize, is: usize, bdsize: usize, iis: usize }
+}
+
+impl ExtensionWord {
+    pub fn remaining_length(&self) -> (usize, usize) {
+        match *self {
+            Self::FEW { da, register, wl, scale, bs, is, bdsize, iis } => {
+                let mut bdsize_out;
+                if bdsize ==  2 || bdsize == 3 {
+                    bdsize_out = bdsize - 1;
+                } else {
+                    bdsize_out = 0;
+                }
+                match iis {
+                    2 | 6 => (bdsize_out, 1),
+                    3 | 7 => (bdsize_out, 2),
+                    _  => (bdsize_out, 0),
+                }
+            },
+            _ => (0, 0)
+        }
+    }
+}
+
 impl Instruction {
     pub fn execute(&self, cpu: &mut CPU) {
         match *self  {
@@ -173,5 +199,8 @@ impl Instruction {
             Self::SUB { register, opmode, mode, earegister } => {},
             Self::MOVE { size, destreg, destmode, srcmode, srcreg }  => {},           
         }
+    }
+    pub fn length(&self) -> u32 {
+        0
     }
 }
