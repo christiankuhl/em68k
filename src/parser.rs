@@ -253,7 +253,7 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
     }
     // Specificity 8
     match split_instruction(opcode, vec![8, 2, 3, 3]).as_slice() {
-        [_ADDI, size, mode, earegister] => return Some(ADDI { size: *size, mode: *mode, earegister: *earegister }),
+        [_ADDI, size, mode, earegister] if size < &3 => return Some(ADDI { size: *size, mode: *mode, earegister: *earegister }),
         [_ANDI, size, mode, earegister] => return Some(ANDI { size: *size, mode: *mode, earegister: *earegister }),
         [_CLR, size, mode, earegister] => return Some(CLR { size: *size, mode: *mode, earegister: *earegister }),
         [_CMPI, size, mode, earegister] => return Some(CMPI { size: *size, mode: *mode, earegister: *earegister }),
@@ -376,7 +376,7 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
         _ => {}
     }
     match split_instruction(opcode, vec![4, 3, 3, 3, 3]).as_slice() {
-        [_ADD, register, opmode, mode, earegister] => {
+        [_ADD, register, opmode, mode, earegister] if opmode < &6 && opmode != &3 => {
             return Some(ADD { register: *register, opmode: *opmode, mode: *mode, earegister: *earegister })
         }
         [_AND, register, opmode, mode, earegister] => {

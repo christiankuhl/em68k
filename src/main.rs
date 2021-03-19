@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::fs;
 use std::rc::Rc;
+use std::io::{stdin, stdout, Read, Write};
 mod parser;
 use parser::{parse_extension_word, parse_instruction};
 mod instructions;
@@ -9,26 +10,34 @@ use instructions::ExtensionWord::*;
 mod memory;
 use memory::MemoryHandle;
 
-use std::io::{stdin, stdout, Read, Write};
-
-fn pause() {
-    let mut stdout = stdout();
-    stdout.write(b"Press Enter to continue...").unwrap();
-    stdout.flush().unwrap();
-    stdin().read(&mut [0]).unwrap();
-}
-
 const RAM_SIZE: usize = 1 << 20;
 
 type RamPtr = Rc<RefCell<[u8; RAM_SIZE]>>;
 type RegPtr = Rc<RefCell<u32>>;
 
+fn pause() {
+    let mut stdout = stdout();
+    stdout.write(b"Press Enter to continue, CTRL+C to quit...").unwrap();
+    stdout.flush().unwrap();
+    stdin().read(&mut [0]).unwrap();
+}
+
 pub struct CPU {
     pc: u32,         // Program counter
-    ccr: u8,         // Condition code register
+    sr: u16,         // Status register
     dr: [RegPtr; 8], // Data registers
     ar: [RegPtr; 8], // Address registers
+    ssp: RegPtr,     // Supervisory stack pointer
     ram: RamPtr,     // Pointer to RAM
+}
+
+pub enum CCR {
+    C = 0,
+    V = 1,
+    Z = 2,
+    N = 3,
+    X = 4,
+    S = 13
 }
 
 pub struct Emulator {
@@ -48,11 +57,16 @@ impl Emulator {
         let program = fs::read(progname).expect("Program does not exist!");
         let mut raw_mem = self.ram.as_ref().borrow_mut();
         for (j, &b) in program.iter().enumerate() {
-            raw_mem[j + 0x0400] = b;
+            raw_mem[j + 0x400] = b;
         }
-        self.cpu.pc = 0x0400
+        self.cpu.pc = 0x400;
+        self.cpu.ssp.replace(0x400);
     }
-    fn hardware_update(&mut self) {}
+    fn hardware_update(&mut self) {
+        println!("\nHardware output:");
+        println!("{:?}", &self.ram.borrow()[0..16]);
+        println!("{:02x}", self.ram.borrow()[0xf0000]);
+    }
     pub fn new() -> Emulator {
         let ram = RamPtr::new(RefCell::new([0u8; RAM_SIZE]));
         let ar = [
@@ -75,7 +89,8 @@ impl Emulator {
             Rc::new(RefCell::new(0)),
             Rc::new(RefCell::new(0)),
         ];
-        let cpu = CPU { pc: 0, ccr: 0, dr: dr, ar: ar, ram: Rc::clone(&ram) };
+        let ssp = Rc::new(RefCell::new(0));
+        let cpu = CPU { pc: 0, sr: 0, dr: dr, ar: ar, ssp: ssp, ram: Rc::clone(&ram) };
         Emulator { cpu: cpu, ram: Rc::clone(&ram) }
     }
 }
@@ -85,8 +100,7 @@ impl CPU {
         let opcode = self.next_instruction();
         if let Some(instruction) = parse_instruction(opcode) {
             println!("{:?}", self);
-            println!("Instruction: {:?}", instruction);
-            println!("{:02x}", self.ram.borrow()[0xf0000]);
+            println!("Next instruction: {:?}", instruction);
             pause();
             instruction.execute(self);
         } else {
@@ -225,12 +239,19 @@ impl CPU {
             _ => panic!("Invalid addressing mode!"),
         }
     }
+    pub fn set_ccr(&mut self, bit: CCR, value: bool) {
+        if value {
+            self.sr |= 1 << (bit as u8)
+        } else {
+            self.sr |= !(1 << (bit as u8))
+        }
+    }
 }
 
 impl fmt::Debug for CPU {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s = String::from("Registers:\n\n");
-        for j in 0..7 {
+        let mut s = String::from("\nRegisters:\n\n");
+        for j in 0..8 {
             s.push_str(&format!(
                 "A{j}: {a:08x}     D{j}: {d:08x}\n",
                 j = j,
@@ -238,12 +259,12 @@ impl fmt::Debug for CPU {
                 d = *self.dr[j].borrow()
             ));
         }
-        s.push_str(&format!("\n\nProgram Counter: {:04x}", self.pc));
+        s.push_str(&format!("\nProgram Counter: {:04x}", self.pc));
         write!(f, "{}", s)
     }
 }
 
 fn main() {
     let mut em = Emulator::new();
-    em.run("examples/test.bin");
+    em.run("examples/add.bin");
 }

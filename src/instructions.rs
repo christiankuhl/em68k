@@ -1,4 +1,6 @@
-use crate::CPU;
+use std::rc::Rc;
+use crate::{CPU, CCR};
+use crate::memory::{OpResult, MemoryHandle};
 
 #[derive(Debug)]
 pub enum Instruction {
@@ -96,7 +98,7 @@ impl ExtensionWord {
     pub fn remaining_length(&self) -> (usize, usize) {
         match *self {
             Self::FEW { da, register, wl, scale, bs, is, bdsize, iis } => {
-                let mut bdsize_out;
+                let bdsize_out;
                 if bdsize == 2 || bdsize == 3 {
                     bdsize_out = bdsize - 1;
                 } else {
@@ -130,10 +132,40 @@ impl Instruction {
             Self::RTS => {}
             Self::STOP => {}
             Self::TRAPV => {}
-            Self::LINK { register } => {}
-            Self::SWAP { register } => {}
+            Self::LINK { register } => {
+                let displacement = cpu.next_instruction();
+                let mut sp = cpu.ar[7].as_ref().borrow_mut();
+                *sp -= 2;
+                let mut ar = cpu.ar[register].as_ref().borrow_mut();
+                let ram_handle = MemoryHandle { reg: None, ptr: Some(*ar as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                ram_handle.write(OpResult::Long(*ar));
+                *ar = *sp;
+                *sp = (*sp as i32 + displacement as i32) as u32;
+            }
+            Self::SWAP { register } => {
+                let res;
+                {
+                    let mut reg = cpu.dr[register].as_ref().borrow_mut();
+                    *reg = (*reg & 0xffff0000 >> 16) + (*reg & 0xffff << 16);
+                    res = *reg;
+                }
+                cpu.set_ccr(CCR::V, false);
+                cpu.set_ccr(CCR::N, res & (1 << 31) > 0);
+                cpu.set_ccr(CCR::Z, res == 0);
+                cpu.set_ccr(CCR::C, false);
+            }
             Self::UNLK { register } => {}
-            Self::TRAP { vector } => {}
+            Self::TRAP { vector } => {
+                cpu.set_ccr(CCR::S, true);
+                let mut ssp = cpu.ssp.as_ref().borrow_mut();
+                *ssp -= 4;
+                let mut ram_handle = MemoryHandle { reg: None, ptr: Some(*ssp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                ram_handle.write(OpResult::Long(cpu.pc));
+                *ssp -= 2;
+                ram_handle = MemoryHandle { reg: None, ptr: Some(*ssp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                ram_handle.write(OpResult::Word(cpu.sr));
+                cpu.pc = (4 * vector + 0x7E) as u32;
+            }
             Self::MOVEUSP { register, dr } => {}
             Self::BCHGS { mode, earegister } => {}
             Self::BCLRS { mode, earegister } => {}
@@ -153,7 +185,46 @@ impl Instruction {
             Self::MOVEM { size, dr, mode, earegister } => {}
             Self::ABCD { rx, ry, rm } => {}
             Self::SBCD { rx, ry, rm } => {}
-            Self::ADDI { size, mode, earegister } => {}
+            Self::ADDI { size, mode, earegister } => {
+                let extword = cpu.next_instruction();
+                let handle = cpu.memory_handle(mode, earegister, 1 << size);
+                let operand = handle.read(1 << size).inner();
+                let overflow;
+                let negative;
+                let zero;
+                match size {
+                    0 => {
+                        let summand = (extword & 0x00ff) as u8;
+                        let res = (operand as u8).overflowing_add(summand);
+                        overflow = res.1;
+                        negative = (res.0 as i32) < 0;
+                        zero = res.0 == 0;
+                        handle.write(OpResult::Byte(res.0));
+                    },
+                    1 => {
+                        let res = (operand as u16).overflowing_add(extword);
+                        overflow = res.1;
+                        negative = (res.0 as i32) < 0;
+                        zero = res.0 == 0;
+                        handle.write(OpResult::Word(res.0));
+                    },
+                    2 => {
+                        let extword2 = cpu.next_instruction();
+                        let summand = ((extword as u32) << 16) + extword2 as u32;
+                        let res = operand.overflowing_add(summand);
+                        overflow = res.1;
+                        negative = (res.0 as i32) < 0;
+                        zero = res.0 == 0;
+                        handle.write(OpResult::Long(operand + summand));
+                    },
+                    _ => panic!("Invalid operand size!")
+                }
+                cpu.set_ccr(CCR::V, overflow);
+                cpu.set_ccr(CCR::N, negative);
+                cpu.set_ccr(CCR::Z, zero);
+                cpu.set_ccr(CCR::C, overflow);
+                cpu.set_ccr(CCR::X, overflow);   
+            }
             Self::ANDI { size, mode, earegister } => {}
             Self::CLR { size, mode, earegister } => {}
             Self::CMPI { size, mode, earegister } => {}
@@ -164,7 +235,14 @@ impl Instruction {
             Self::ORI { size, mode, earegister } => {}
             Self::SUBI { size, mode, earegister } => {}
             Self::TST { size, mode, earegister } => {}
-            Self::BRA { displacement } => {}
+            Self::BRA { displacement } => {
+                if displacement == 0 {
+                    let displacement_i16 = cpu.next_instruction() as i16;
+                    cpu.pc = (cpu.pc as i32 + (displacement_i16 as i32) - 4) as u32;
+                } else {
+                    cpu.pc = (cpu.pc as i32 + (displacement as i8 as i32) - 2) as u32;
+                }
+            }
             Self::BSR { displacement } => {}
             Self::CMPM { ax, ay, size } => {}
             Self::ADDX { rx, ry, rm, size } => {}
@@ -192,13 +270,62 @@ impl Instruction {
             Self::ADDQ { data, size, mode, earegister } => {}
             Self::SUBQ { data, size, mode, earegister } => {}
             Self::BCC { condition, displacement } => {}
-            Self::ADD { register, opmode, mode, earegister } => {}
+            Self::ADD { register, opmode, mode, earegister } => {
+                let bytesize = 1 << (opmode % 4);
+                let drhandle = cpu.memory_handle(0, register, 0);
+                let ophandle = cpu.memory_handle(mode, earegister, bytesize);
+                let dr = drhandle.read(bytesize).inner();
+                let op = ophandle.read(bytesize).inner();
+                let result: OpResult;
+                let overflow;
+                let negative;
+                let zero;
+                match opmode % 4 {
+                    0 => {
+                        let res = (dr as u8).overflowing_add(op as u8);
+                        result = OpResult::Byte(res.0);
+                        overflow = res.1;
+                        negative = (res.0 as i8) < 0;
+                        zero = res.0 == 0;
+                    }, 
+                    1 => {
+                        let res = (dr as u16).overflowing_add(op as u16);
+                        result = OpResult::Word(res.0);
+                        overflow = res.1;
+                        negative = (res.0 as i16) < 0;
+                        zero = res.0 == 0;
+                    },
+                    2 => {
+                        let res = dr.overflowing_add(op);
+                        result = OpResult::Long(res.0);
+                        overflow = res.1;
+                        negative = (res.0 as i32) < 0;
+                        zero = res.0 == 0;
+                    },
+                    _ => panic!("Invalid Opmode!")
+                }
+                match opmode >> 2 {
+                    0 => {
+                        drhandle.write(result);
+                    },
+                    1 => {
+                        ophandle.write(result);
+                    },
+                    _ => {}
+                }
+                cpu.set_ccr(CCR::V, overflow);
+                cpu.set_ccr(CCR::N, negative);
+                cpu.set_ccr(CCR::Z, zero);
+                cpu.set_ccr(CCR::C, overflow);
+                cpu.set_ccr(CCR::X, overflow);
+            }
             Self::AND { register, opmode, mode, earegister } => {}
             Self::CMP { register, opmode, mode, earegister } => {}
             Self::EOR { register, opmode, mode, earegister } => {}
             Self::OR { register, opmode, mode, earegister } => {}
             Self::SUB { register, opmode, mode, earegister } => {}
             Self::MOVE { size, destreg, destmode, srcmode, srcreg } => {
+                // #FIXME: update CCR
                 let mut memsize = size;
                 if size == 2 {
                     memsize = 4;

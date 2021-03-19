@@ -1,0 +1,19 @@
+680x0 MACRO ASSEMBLER   Version 5.00   (c) 1992-2005 Peter J. Fondse
+
+Date: 28 Dec 2016      Time: 05:54:37          Source: C:\IDE68K\EXAMPLES\PGM68KIT\TEST3.ASM
+
+          000F 0000    1   gpio1    equ     $F0000
+                       2   
+00000400               3            org $400
+                       4   
+00000400  203C 45DF    5   start    move.l #$45DFED78,d0
+00000404  ED78      
+00000406  223C DDEA    6            move.l #$DDEA7654,d1
+0000040A  7654      
+0000040C  D081         7            add.l  d1,d0
+0000040E  4E40         8            trap #0
+                       9   
+                      10   
+          0000 0400
+
+Assembly errors: 0

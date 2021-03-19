@@ -7,6 +7,16 @@ pub enum OpResult {
     Long(u32),
 }
 
+impl OpResult {
+    pub fn inner(&self) -> u32 {
+        match *self {
+            OpResult::Byte(b) => b as u32,
+            OpResult::Word(w) => w as u32,
+            OpResult::Long(l) => l,
+        }
+    }
+}
+
 pub struct MemoryHandle {
     pub reg: Option<RegPtr>,
     pub ptr: Option<usize>,
