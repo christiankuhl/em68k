@@ -1,99 +1,34 @@
+use std::fs;
+use std::fmt;
 use std::rc::Rc;
 use std::cell::RefCell;
 mod parser;
-mod instructions;
 use parser::{parse_instruction, parse_extension_word};
+mod instructions;
 use instructions::ExtensionWord::{*};
+mod memory;
+use memory::MemoryHandle;
+
+use std::io::{stdin, stdout, Read, Write};
+
+fn pause() {
+    let mut stdout = stdout();
+    stdout.write(b"Press Enter to continue...").unwrap();
+    stdout.flush().unwrap();
+    stdin().read(&mut [0]).unwrap();
+}
 
 const RAM_SIZE: usize = 1 << 20;
 
 type RamPtr = Rc<RefCell<[u8; RAM_SIZE]>>;
-
-enum Result {
-    Byte(u8),
-    Word(u16),
-    Long(u32)
-}
-
-struct MemoryHandle {
-    reg: Option<RefCell<u32>>,
-    ptr: Option<usize>,
-    mem: Option<RamPtr>
-}
-
-impl MemoryHandle {
-    fn read(&self, size: Result) -> Result {
-        if let Some(ptr) = self.ptr {
-            if let Some(mem) = &self.mem {
-                let raw_mem = *mem.borrow();
-                match size {
-                    Result::Byte(_) => Result::Byte(raw_mem[ptr]),
-                    Result::Word(_) => Result::Word(u16::from_be_bytes([raw_mem[ptr], raw_mem[ptr+1]])),
-                    Result::Long(_) => Result::Long(u32::from_be_bytes([raw_mem[ptr], raw_mem[ptr+1], raw_mem[ptr+2], raw_mem[ptr+3]])),
-                }
-            } else {
-                panic!("Invalid memory handle!")
-            }
-        } else {
-            if let Some(reg) = &self.reg {
-                let raw_mem = *reg.borrow();
-                match size {
-                    Result::Byte(_) => Result::Byte((raw_mem & 0xff) as u8),
-                    Result::Word(_) => Result::Word((raw_mem & 0xffff) as u16),
-                    Result::Long(_) => Result::Long(raw_mem & 0xffffffff),
-                }
-            } else {
-                panic!("Invalid memory handle!")
-            }
-        }
-    }
-    fn write(&self, res: Result) {
-        if let Some(ptr) = self.ptr {
-            if let Some(mem) = &self.mem {
-                let mut raw_mem = *mem.borrow_mut();
-                match res {
-                    Result::Byte(b) => { raw_mem[ptr] = b },
-                    Result::Word(w) => {
-                        raw_mem[ptr] = (w & 0xff) as u8;
-                        raw_mem[ptr+1] = ((w & 0xff00) >> 8) as u8;
-                    },
-                    Result::Long(l) => {
-                        raw_mem[ptr] = (l & 0xff) as u8;
-                        raw_mem[ptr+1] = ((l & 0xff00) >> 8) as u8;
-                        raw_mem[ptr+2] = ((l & 0xff0000) >> 16) as u8;
-                        raw_mem[ptr+3] = ((l & 0xff000000) >> 8) as u8;
-                    },
-                }
-            } else {
-                panic!("Invalid memory handle!")
-            }
-        } else {
-            if let Some(reg) = &self.reg {
-                let mut raw_mem = reg.borrow_mut();
-                match res {
-                    Result::Byte(b) => { 
-                        *raw_mem &= 0xffffff00;
-                        *raw_mem += b as u32;
-                     },
-                    Result::Word(w) => { 
-                        *raw_mem &= 0xffff0000;
-                        *raw_mem += w as u32;
-                     },
-                    Result::Long(l) => { *raw_mem = l; },
-                }
-            } else {
-                panic!("Invalid memory handle!")
-            }
-        }
-    }
-}
+type RegPtr = Rc<RefCell<u32>>;
 
 pub struct CPU {
-    pc: u32,                    // Program counter
-    ccr: u8,                    // Condition code register
-    dr: [u32; 8],               // Data registers
-    ar: [u32; 8],               // Address registers
-    ram: RamPtr                 // Pointer to RAM
+    pc: u32,                        // Program counter
+    ccr: u8,                        // Condition code register
+    dr: [RegPtr; 8],                // Data registers
+    ar: [RegPtr; 8],                // Address registers
+    ram: RamPtr                     // Pointer to RAM
 }
 
 pub struct Emulator {
@@ -109,11 +44,22 @@ impl Emulator {
             self.hardware_update();
         }
     }
-    fn initialize(&mut self, program: &str) {}
+    fn initialize(&mut self, progname: &str) {
+        let program = fs::read(progname).expect("Program does not exist!");
+        let mut raw_mem = self.ram.as_ref().borrow_mut();
+        for (j, &b) in program.iter().enumerate() {
+            raw_mem[j + 0x0400] = b;
+        } 
+        self.cpu.pc = 0x0400
+    }
     fn hardware_update(&mut self) {}
     pub fn new() -> Emulator {
-        let ram = Rc::new(RefCell::new([0u8; RAM_SIZE]));
-        let cpu = CPU { pc: 0, ccr: 0, dr: [0u32; 8], ar: [0u32; 8], ram: Rc::clone(&ram) };
+        let ram = RamPtr::new(RefCell::new([0u8; RAM_SIZE]));
+        let ar = [Rc::new(RefCell::new(0)), Rc::new(RefCell::new(0)), Rc::new(RefCell::new(0)), Rc::new(RefCell::new(0)),
+            Rc::new(RefCell::new(0)), Rc::new(RefCell::new(0)), Rc::new(RefCell::new(0)), Rc::new(RefCell::new(0))];
+        let dr = [Rc::new(RefCell::new(0)), Rc::new(RefCell::new(0)), Rc::new(RefCell::new(0)), Rc::new(RefCell::new(0)),
+            Rc::new(RefCell::new(0)), Rc::new(RefCell::new(0)), Rc::new(RefCell::new(0)), Rc::new(RefCell::new(0))];
+        let cpu = CPU { pc: 0, ccr: 0, dr: dr, ar: ar, ram: Rc::clone(&ram) };
         Emulator { cpu: cpu, ram: Rc::clone(&ram) }
     }
 }
@@ -121,7 +67,11 @@ impl Emulator {
 impl CPU {
     pub fn clock_cycle(&mut self) {
         let opcode = self.next_instruction();
-        if let Some(instruction) = parser::parse_instruction(opcode) {
+        if let Some(instruction) = parse_instruction(opcode) {
+            println!("{:?}", self);
+            println!("Instruction: {:?}", instruction);
+            println!("{:02x}", self.ram.borrow()[0xf0001]);
+            pause();
             instruction.execute(self);
         } else {
             panic!("Illegal instruction!");
@@ -137,38 +87,38 @@ impl CPU {
     fn memory_handle(&mut self, mode: usize, register: usize, size: usize) -> MemoryHandle {
         match mode {
             // Data register direct mode
-            0 => MemoryHandle { reg: Some(RefCell::new(self.dr[register])), ptr: None, mem: None },
+            0 => MemoryHandle { reg: Some(Rc::clone(&self.dr[register])), ptr: None, mem: None },
             // Address register direct mode
-            1 => MemoryHandle { reg: Some(RefCell::new(self.ar[register])), ptr: None, mem: None },
+            1 => MemoryHandle { reg: Some(Rc::clone(&self.ar[register].clone())), ptr: None, mem: None },
             // Address register indirect mode
             2 => {
-                let ptr = self.ar[register] as usize;
+                let ptr = *self.ar[register].borrow() as usize;
                 MemoryHandle { reg: None, ptr: Some(ptr), mem: Some(Rc::clone(&self.ram)) }
             },
             // Address register indirect with postincrement mode
             3 => {
-                let ptr = self.ar[register] as usize;
+                let ptr = (*self.ar[register]).borrow().clone() as usize;
                 if register == 7 && size == 1 {
-                    self.ar[register] += 2;    
+                    *self.ar[register].borrow_mut() += 2;    
                 } else {
-                    self.ar[register] += size as u32; 
+                    *self.ar[register].borrow_mut() += size as u32; 
                 }
                 MemoryHandle { reg: None, ptr: Some(ptr), mem: Some(Rc::clone(&self.ram)) }
             },
             // Address register indirect with predecrement mode
             4 => {
                 if register == 7 && size == 1 {
-                    self.ar[register] -= 2;    
+                    *self.ar[register].borrow_mut() -= 2;    
                 } else {
-                    self.ar[register] -= size as u32; 
+                    *self.ar[register].borrow_mut() -= size as u32; 
                 }
-                let ptr = self.ar[register] as usize;
+                let ptr = *self.ar[register].borrow() as usize;
                 MemoryHandle { reg: None, ptr: Some(ptr), mem: Some(Rc::clone(&self.ram)) }
             },           
             // Address register indirect with displacement mode
             5 => {
                 let displacement = self.next_instruction() as i16;
-                let ptr = (self.ar[register] + displacement as u32) as usize;
+                let ptr = (*self.ar[register].borrow() + displacement as u32) as usize;
                 MemoryHandle { reg: None, ptr: Some(ptr), mem: Some(Rc::clone(&self.ram)) }
             }
             6 => {
@@ -179,9 +129,9 @@ impl CPU {
                         // Address Register Indirect with Index (8-Bit Displacement) Mode
                         BEW {da, register: iregister, wl: _, scale, displacement } => {
                             if da == 0 {
-                                ptr = self.dr[iregister];
+                                ptr = *self.dr[iregister].borrow_mut();
                             } else {
-                                ptr = self.ar[iregister];
+                                ptr = *self.ar[iregister].borrow_mut();
                             }
                             ptr *= 1 << scale;
                             ptr += (displacement & 0xff) as i8 as u32;
@@ -190,9 +140,9 @@ impl CPU {
                         // Address Register Indirect with Index (Base Displacement) Mode
                         FEW { da, register: iregister, wl: _, scale, bs: _, is: _, bdsize: _, iis: _ } => {
                             if da == 0 {
-                                ptr = self.dr[iregister];
+                                ptr = *self.dr[iregister].borrow_mut();
                             } else {
-                                ptr = self.ar[iregister];
+                                ptr = *self.ar[iregister].borrow_mut();
                             }
                             ptr *= 1 << scale;
                             let mut displacement: u32 = 0;
@@ -208,20 +158,65 @@ impl CPU {
                     panic!("Invalid extension word!") 
                 }
             },
+            7 => {
+                let extword = self.next_instruction();
+                match register {
+                    // 0 => {
+                    //     // Absolute Short Addressing Mode
+                    // },
+                    1 => {
+                        // Absolute Long Addressing Mode
+                        let extword2 = self.next_instruction();
+                        let mut ptr = extword2 as usize;
+                        ptr += (extword as usize) << 16;
+                        MemoryHandle { reg: None, ptr: Some(ptr), mem: Some(Rc::clone(&self.ram)) }
+                    },
+                    // 2 => {
+                    //     // Program Counter Indirect with Displacement Mode
+                    // },
+                    // 3 => {
+                    //     // Program Counter Indirect with Index (8-Bit Displacement) Mode
+                    //     // Program Counter Indirect with Index (Base Displacement) Mode
+                    //     // Program Counter Memory Indirect Preindexed Mode
+                    // },
+                    4 => {
+                        // Immediate Data  
+                        match size {
+                            1 => {
+                                MemoryHandle { reg: None, ptr: Some(self.pc as usize - 1), mem: Some(Rc::clone(&self.ram)) }
+                            },
+                            2 => {
+                                MemoryHandle { reg: None, ptr: Some(self.pc as usize - 2), mem: Some(Rc::clone(&self.ram)) }
+                            },
+                            4 => {
+                                self.pc += 2;
+                                MemoryHandle { reg: None, ptr: Some(self.pc as usize - 4), mem: Some(Rc::clone(&self.ram)) }
+                            }
+                            _ => panic!("Unexpected operand size!")
+                        }
+                    },
+                    _ => panic!("Invalid register!")
+                }
+            },
             _ => panic!("Invalid addressing mode!")
         }
     }
 }
 
-fn main() {
-    let a = RefCell::new(1);
-
-    {
-        let mut b = a.borrow_mut();
-        *b = 2;
+impl fmt::Debug for CPU {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut s = String::from("Registers:\n\n");
+        for j in 0..7 {
+            s.push_str(&format!("A{j}: {a:08x}     D{j}: {d:08x}\n", j=j, a=*self.ar[j].borrow(), d=*self.dr[j].borrow()));
+        }
+        s.push_str(&format!("\n\nProgram Counter: {:04x}", self.pc));
+        write!(f, "{}", s)
     }
+}
 
-    println!("{:?}", a.into_inner());    
+fn main() {
+    let mut em = Emulator::new();
+    em.run("test.bin");
 }
 
 

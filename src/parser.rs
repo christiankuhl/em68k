@@ -139,14 +139,14 @@ pub fn split_instruction(word: u16, lengths: Vec<usize>) -> Vec<usize> {
     let mut result = vec![0; lengths.len()];
     let mut bits = [0; 16];
     for j in 0..16 {
-        bits[j] = ((word & (1 << j)) >> j).into();
+        bits[15 - j] = ((word & (1 << j)) >> j).into();
     } 
     let mut current = &bits[..];
     for (j, &length) in lengths.iter().enumerate() {
         let (part, rest) = current.split_at(length);
         current = rest;
         for (i, bit) in part.iter().enumerate() {
-            result[j] += bit << i;
+            result[j] += bit << (length - i - 1);
         } 
     }
     result
@@ -331,7 +331,7 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
     }
     // Specificity 2
     match split_instruction(opcode, vec![2, 2, 3, 3, 3, 3]).as_slice() {
-        [_MOVE, size, destreg, destmode, srcmode, srcreg] => { return Some(MOVE {size: *size, destreg: *destreg, destmode: *destmode, srcmode: *srcmode, srcreg: *srcreg }) },
+        [_MOVE, size, destreg, destmode, srcmode, srcreg] if size <= &3 => { return Some(MOVE {size: *size, destreg: *destreg, destmode: *destmode, srcmode: *srcmode, srcreg: *srcreg }) },
         _ => {}
     }
     None

@@ -1,5 +1,6 @@
 use crate::CPU;
 
+#[derive(Debug)]
 pub enum Instruction {
     ANDICCR,
     ANDISR,
@@ -197,10 +198,17 @@ impl Instruction {
             Self::EOR { register, opmode, mode, earegister } => {},
             Self::OR { register, opmode, mode, earegister } => {},
             Self::SUB { register, opmode, mode, earegister } => {},
-            Self::MOVE { size, destreg, destmode, srcmode, srcreg }  => {},           
+            Self::MOVE { size, destreg, destmode, srcmode, srcreg }  => {
+                let mut memsize = size;
+                if size == 2 {
+                    memsize = 4;
+                } else if size == 3 {
+                    memsize = 2;
+                }
+                let src = cpu.memory_handle(srcmode, srcreg, memsize);
+                let dest = cpu.memory_handle(destmode, destreg, memsize);
+                dest.write(src.read(memsize));
+            },           
         }
-    }
-    pub fn length(&self) -> u32 {
-        0
     }
 }
