@@ -89,7 +89,7 @@ pub enum Instruction {
 
 pub enum ExtensionWord {
     BEW { da: usize, register: usize, wl: usize, scale: usize, displacement: usize },
-    FEW { da: usize, register: usize, wl: usize, scale: usize, bs: usize, is: usize, bdsize: usize, iis: usize }
+    FEW { da: usize, register: usize, wl: usize, scale: usize, bs: usize, is: usize, bdsize: usize, iis: usize },
 }
 
 impl ExtensionWord {
@@ -97,7 +97,7 @@ impl ExtensionWord {
         match *self {
             Self::FEW { da, register, wl, scale, bs, is, bdsize, iis } => {
                 let mut bdsize_out;
-                if bdsize ==  2 || bdsize == 3 {
+                if bdsize == 2 || bdsize == 3 {
                     bdsize_out = bdsize - 1;
                 } else {
                     bdsize_out = 0;
@@ -105,100 +105,100 @@ impl ExtensionWord {
                 match iis {
                     2 | 6 => (bdsize_out, 1),
                     3 | 7 => (bdsize_out, 2),
-                    _  => (bdsize_out, 0),
+                    _ => (bdsize_out, 0),
                 }
-            },
-            _ => (0, 0)
+            }
+            _ => (0, 0),
         }
     }
 }
 
 impl Instruction {
     pub fn execute(&self, cpu: &mut CPU) {
-        match *self  {
-            Self::ANDICCR => {},
-            Self::ANDISR => {},
-            Self::EORICCR => {},
-            Self::EORISR => {},
-            Self::ILLEGAL => {},
-            Self::NOP => {},
-            Self::ORICCR => {},
-            Self::ORISR => {},
-            Self::RESET => {},
-            Self::RTE => {},
-            Self::RTR => {},
-            Self::RTS => {},
-            Self::STOP => {},
-            Self::TRAPV => {},
-            Self::LINK { register } => {},
-            Self::SWAP { register } => {},
-            Self::UNLK { register } => {},
-            Self::TRAP { vector } => {},
-            Self::MOVEUSP { register, dr } => {},
-            Self::BCHGS { mode, earegister } => {},
-            Self::BCLRS { mode, earegister } => {},
-            Self::BSETS { mode, earegister } => {},
-            Self::BTSTS { mode, earegister } => {},
-            Self::JMP { mode, earegister } => {},
-            Self::JSR { mode, earegister } => {},
-            Self::MOVECCR { mode, earegister } => {},
-            Self::MOVEFROMSR { mode, earegister } => {},
-            Self::MOVETOSR { mode, earegister } => {},
-            Self::PEA { mode, earegister } => {},
-            Self::TAS { mode, earegister } => {},
-            Self::EXT { mode, earegister } => {},
-            Self::ASLRMEM { mode, earegister } => {},
-            Self::LSLRMEM { mode, earegister } => {},
-            Self::DBCC { condition, register } => {},
-            Self::MOVEM { size, dr, mode, earegister } => {},
-            Self::ABCD { rx, ry, rm } => {},
-            Self::SBCD { rx, ry, rm } => {},
-            Self::ADDI { size, mode, earegister } => {},
-            Self::ANDI { size, mode, earegister } => {},
-            Self::CLR { size, mode, earegister } => {},
-            Self::CMPI { size, mode, earegister } => {},
-            Self::EORI { size, mode, earegister } => {},
-            Self::NEG { size, mode, earegister } => {},
-            Self::NEGX { size, mode, earegister } => {},
-            Self::NOT { size, mode, earegister } => {},
-            Self::ORI { size, mode, earegister } => {},
-            Self::SUBI { size, mode, earegister } => {},
-            Self::TST { size, mode, earegister } => {},
-            Self::BRA { displacement } => {},
-            Self::BSR { displacement } => {},
-            Self::CMPM { ax, ay, size } => {},
-            Self::ADDX { rx, ry, rm, size } => {},
-            Self::SUBX { rx, ry, rm, size } => {},
-            Self::BCHG { register, mode, earegister } => {},
-            Self::BCLR { register, mode, earegister } => {},
-            Self::BSET { register, mode, earegister } => {},
-            Self::BTST { register, mode, earegister } => {},
-            Self::DIVS { register, mode, earegister } => {},
-            Self::DIVU { register, mode, earegister } => {},
-            Self::LEA { register, mode, earegister } => {},
-            Self::MULS { register, mode, earegister } => {},
-            Self::MULU { register, mode, earegister } => {},
-            Self::NBCD { register, mode, earegister } => {},
-            Self::MOVEP { register, mode, earegister } => {},
-            Self::SCC { condition, mode, earegister } => {},
-            Self::ASLRREG { register, count, size, dr, lr } => {},
-            Self::LSLRREG { register, count, size, dr, lr } => {},
-            Self::ROXLR { register, count, size, dr, lr } => {},
-            Self::ROLR { register, count, size, dr, lr } => {},
-            Self::MOVEQ { register, data } => {},
-            Self::EXG { mode, rx, ry } => {},
-            Self::CHK { register, size, mode, earegister } => {},
-            Self::MOVEA { register, size, mode, earegister } => {},
-            Self::ADDQ { data, size, mode, earegister } => {},
-            Self::SUBQ { data, size, mode, earegister } => {},
-            Self::BCC { condition, displacement } => {},
-            Self::ADD { register, opmode, mode, earegister } => {},
-            Self::AND { register, opmode, mode, earegister } => {},
-            Self::CMP { register, opmode, mode, earegister } => {},
-            Self::EOR { register, opmode, mode, earegister } => {},
-            Self::OR { register, opmode, mode, earegister } => {},
-            Self::SUB { register, opmode, mode, earegister } => {},
-            Self::MOVE { size, destreg, destmode, srcmode, srcreg }  => {
+        match *self {
+            Self::ANDICCR => {}
+            Self::ANDISR => {}
+            Self::EORICCR => {}
+            Self::EORISR => {}
+            Self::ILLEGAL => {}
+            Self::NOP => {}
+            Self::ORICCR => {}
+            Self::ORISR => {}
+            Self::RESET => {}
+            Self::RTE => {}
+            Self::RTR => {}
+            Self::RTS => {}
+            Self::STOP => {}
+            Self::TRAPV => {}
+            Self::LINK { register } => {}
+            Self::SWAP { register } => {}
+            Self::UNLK { register } => {}
+            Self::TRAP { vector } => {}
+            Self::MOVEUSP { register, dr } => {}
+            Self::BCHGS { mode, earegister } => {}
+            Self::BCLRS { mode, earegister } => {}
+            Self::BSETS { mode, earegister } => {}
+            Self::BTSTS { mode, earegister } => {}
+            Self::JMP { mode, earegister } => {}
+            Self::JSR { mode, earegister } => {}
+            Self::MOVECCR { mode, earegister } => {}
+            Self::MOVEFROMSR { mode, earegister } => {}
+            Self::MOVETOSR { mode, earegister } => {}
+            Self::PEA { mode, earegister } => {}
+            Self::TAS { mode, earegister } => {}
+            Self::EXT { mode, earegister } => {}
+            Self::ASLRMEM { mode, earegister } => {}
+            Self::LSLRMEM { mode, earegister } => {}
+            Self::DBCC { condition, register } => {}
+            Self::MOVEM { size, dr, mode, earegister } => {}
+            Self::ABCD { rx, ry, rm } => {}
+            Self::SBCD { rx, ry, rm } => {}
+            Self::ADDI { size, mode, earegister } => {}
+            Self::ANDI { size, mode, earegister } => {}
+            Self::CLR { size, mode, earegister } => {}
+            Self::CMPI { size, mode, earegister } => {}
+            Self::EORI { size, mode, earegister } => {}
+            Self::NEG { size, mode, earegister } => {}
+            Self::NEGX { size, mode, earegister } => {}
+            Self::NOT { size, mode, earegister } => {}
+            Self::ORI { size, mode, earegister } => {}
+            Self::SUBI { size, mode, earegister } => {}
+            Self::TST { size, mode, earegister } => {}
+            Self::BRA { displacement } => {}
+            Self::BSR { displacement } => {}
+            Self::CMPM { ax, ay, size } => {}
+            Self::ADDX { rx, ry, rm, size } => {}
+            Self::SUBX { rx, ry, rm, size } => {}
+            Self::BCHG { register, mode, earegister } => {}
+            Self::BCLR { register, mode, earegister } => {}
+            Self::BSET { register, mode, earegister } => {}
+            Self::BTST { register, mode, earegister } => {}
+            Self::DIVS { register, mode, earegister } => {}
+            Self::DIVU { register, mode, earegister } => {}
+            Self::LEA { register, mode, earegister } => {}
+            Self::MULS { register, mode, earegister } => {}
+            Self::MULU { register, mode, earegister } => {}
+            Self::NBCD { register, mode, earegister } => {}
+            Self::MOVEP { register, mode, earegister } => {}
+            Self::SCC { condition, mode, earegister } => {}
+            Self::ASLRREG { register, count, size, dr, lr } => {}
+            Self::LSLRREG { register, count, size, dr, lr } => {}
+            Self::ROXLR { register, count, size, dr, lr } => {}
+            Self::ROLR { register, count, size, dr, lr } => {}
+            Self::MOVEQ { register, data } => {}
+            Self::EXG { mode, rx, ry } => {}
+            Self::CHK { register, size, mode, earegister } => {}
+            Self::MOVEA { register, size, mode, earegister } => {}
+            Self::ADDQ { data, size, mode, earegister } => {}
+            Self::SUBQ { data, size, mode, earegister } => {}
+            Self::BCC { condition, displacement } => {}
+            Self::ADD { register, opmode, mode, earegister } => {}
+            Self::AND { register, opmode, mode, earegister } => {}
+            Self::CMP { register, opmode, mode, earegister } => {}
+            Self::EOR { register, opmode, mode, earegister } => {}
+            Self::OR { register, opmode, mode, earegister } => {}
+            Self::SUB { register, opmode, mode, earegister } => {}
+            Self::MOVE { size, destreg, destmode, srcmode, srcreg } => {
                 let mut memsize = size;
                 if size == 2 {
                     memsize = 4;
@@ -208,7 +208,7 @@ impl Instruction {
                 let src = cpu.memory_handle(srcmode, srcreg, memsize);
                 let dest = cpu.memory_handle(destmode, destreg, memsize);
                 dest.write(src.read(memsize));
-            },           
+            }
         }
     }
 }
