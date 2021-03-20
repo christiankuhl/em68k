@@ -312,8 +312,8 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
         [0xc, register, _NBCD, mode, earegister] => {
             return Some(NBCD { register: *register, mode: *mode, earegister: *earegister })
         }
-        [0x0, register, mode, _MOVEP, earegister] => {
-            return Some(MOVEP { register: *register, mode: *mode, earegister: *earegister })
+        [0x0, dregister, opmode, _MOVEP, aregister] if opmode > &4 => {
+            return Some(MOVEP { dregister: *dregister, opmode: *opmode, aregister: *aregister })
         }
         _ => {}
     }
@@ -356,7 +356,7 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
         _ => {}
     }
     match split_instruction(opcode, vec![2, 2, 3, 3, 3, 3]).as_slice() {
-        [_MOVEA, size, register, 1, mode, earegister] => {
+        [_MOVEA, size, register, 1, mode, earegister] if size == &2 || size == &3 => {
             return Some(MOVEA { register: *register, size: *size, mode: *mode, earegister: *earegister })
         }
         _ => {}

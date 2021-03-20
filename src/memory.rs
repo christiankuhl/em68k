@@ -97,4 +97,10 @@ impl MemoryHandle {
             }
         }
     }
+    pub fn offset(&mut self, offset: isize) {
+        match self.ptr {
+            Some(ptr) => self.ptr = Some((ptr as isize + offset) as usize),
+            _ => {}
+        }
+    }
 }

@@ -64,8 +64,9 @@ impl Emulator {
     }
     fn hardware_update(&mut self) {
         println!("\nHardware output:");
-        println!("{:?}", &self.ram.borrow()[0..16]);
-        println!("{:02x}", self.ram.borrow()[0xf0000]);
+        println!("0x100: {:02x?}", &self.ram.borrow()[0x100..0x108]);
+        println!("0x1000: {:02x?}", &self.ram.borrow()[0x1000..0x1004]);
+        println!("0x2000: {:02x?}", &self.ram.borrow()[0x2000..0x2004]);
     }
     pub fn new() -> Emulator {
         let ram = RamPtr::new(RefCell::new([0u8; RAM_SIZE]));
@@ -77,7 +78,7 @@ impl Emulator {
             Rc::new(RefCell::new(0)),
             Rc::new(RefCell::new(0)),
             Rc::new(RefCell::new(0)),
-            Rc::new(RefCell::new(0)),
+            Rc::new(RefCell::new(0x104)),
         ];
         let dr = [
             Rc::new(RefCell::new(0)),
@@ -100,7 +101,7 @@ impl CPU {
         let opcode = self.next_instruction();
         if let Some(instruction) = parse_instruction(opcode) {
             println!("{:?}", self);
-            println!("Next instruction: {:?}", instruction);
+            println!("Next instruction: {:}", instruction.as_asm(self));
             pause();
             instruction.execute(self);
         } else {
@@ -108,9 +109,7 @@ impl CPU {
         }
     }
     fn next_instruction(&mut self) -> u16 {
-        let raw_mem = *self.ram.borrow();
-        let ptr = self.pc as usize;
-        let instr = u16::from_be_bytes([raw_mem[ptr], raw_mem[ptr + 1]]);
+        let instr = self.lookahead(0); 
         self.pc += 2;
         instr
     }
@@ -246,6 +245,14 @@ impl CPU {
             self.sr |= !(1 << (bit as u8))
         }
     }
+    pub fn in_supervisor_mode(&self) -> bool {
+        self.sr & (1 << (CCR::S as u32)) != 0
+    }
+    pub fn lookahead(&self, offset: usize) -> u16 {
+        let raw_mem = *self.ram.borrow();
+        let ptr = self.pc as usize + 2 * offset;
+        u16::from_be_bytes([raw_mem[ptr], raw_mem[ptr + 1]])
+    }
 }
 
 impl fmt::Debug for CPU {
@@ -259,12 +266,12 @@ impl fmt::Debug for CPU {
                 d = *self.dr[j].borrow()
             ));
         }
-        s.push_str(&format!("\nProgram Counter: {:04x}", self.pc));
+        s.push_str(&format!("\nProgram Counter: {:08x}", self.pc));
         write!(f, "{}", s)
     }
 }
 
 fn main() {
     let mut em = Emulator::new();
-    em.run("examples/add.bin");
+    em.run("examples/strtolower.bin");
 }

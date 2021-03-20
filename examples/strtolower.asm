@@ -3,10 +3,15 @@
 ; all alphabetic characters to lower case.
 ;
 ; Entry parameters:
-;   (SP+0): Source string address
-;   (SP+4): Target string address
+;   (SP+4): Source string address
+;   (SP+8): Target string address
 
                 org     $00100000       ;Start at 00100000
+                move.l  #$00001000,(a7) ;Initialize $2000 with 'ABCD'
+                move.l  #$00002000,-(a7)
+                move.l  (a7),a0
+                move.l  #$41424344,(a0) 
+                subi.w  #$4,a7
 strtolower      public
                 link    a6,#0           ;Set up stack frame
                 movea   8(a6),a0        ;A0 = src, from stack
