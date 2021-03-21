@@ -1,9 +1,8 @@
 use std::rc::Rc;
-use crate::{CPU, CCR};
-use crate::memory::{OpResult, MemoryHandle};
+use crate::{CPU, CCR, CCRFlags};
+use crate::memory::{OpResult, MemoryHandle, Size};
 use crate::parser::parse_extension_word;
 
-#[derive(Debug)]
 pub enum Instruction {
     ANDICCR,
     ANDISR,
@@ -38,26 +37,26 @@ pub enum Instruction {
     EXT { mode: usize, earegister: usize },
     ASLRMEM { mode: usize, earegister: usize },
     LSLRMEM { mode: usize, earegister: usize },
-    DBCC { condition: usize, register: usize },
-    MOVEM { size: usize, dr: usize, mode: usize, earegister: usize },
+    DBCC { condition: Condition, register: usize },
+    MOVEM { size: Size, dr: usize, mode: usize, earegister: usize },
     ABCD { rx: usize, ry: usize, rm: usize },
     SBCD { rx: usize, ry: usize, rm: usize },
-    ADDI { size: usize, mode: usize, earegister: usize },
-    ANDI { size: usize, mode: usize, earegister: usize },
-    CLR { size: usize, mode: usize, earegister: usize },
-    CMPI { size: usize, mode: usize, earegister: usize },
-    EORI { size: usize, mode: usize, earegister: usize },
-    NEG { size: usize, mode: usize, earegister: usize },
-    NEGX { size: usize, mode: usize, earegister: usize },
-    NOT { size: usize, mode: usize, earegister: usize },
-    ORI { size: usize, mode: usize, earegister: usize },
-    SUBI { size: usize, mode: usize, earegister: usize },
-    TST { size: usize, mode: usize, earegister: usize },
+    ADDI { size: Size, mode: usize, earegister: usize },
+    ANDI { size: Size, mode: usize, earegister: usize },
+    CLR { size: Size, mode: usize, earegister: usize },
+    CMPI { size: Size, mode: usize, earegister: usize },
+    EORI { size: Size, mode: usize, earegister: usize },
+    NEG { size: Size, mode: usize, earegister: usize },
+    NEGX { size: Size, mode: usize, earegister: usize },
+    NOT { size: Size, mode: usize, earegister: usize },
+    ORI { size: Size, mode: usize, earegister: usize },
+    SUBI { size: Size, mode: usize, earegister: usize },
+    TST { size: Size, mode: usize, earegister: usize },
     BRA { displacement: usize },
     BSR { displacement: usize },
-    CMPM { ax: usize, ay: usize, size: usize },
-    ADDX { rx: usize, ry: usize, rm: usize, size: usize },
-    SUBX { rx: usize, ry: usize, rm: usize, size: usize },
+    CMPM { ax: usize, ay: usize, size: Size },
+    ADDX { rx: usize, ry: usize, rm: usize, size: Size },
+    SUBX { rx: usize, ry: usize, rm: usize, size: Size },
     BCHG { register: usize, mode: usize, earegister: usize },
     BCLR { register: usize, mode: usize, earegister: usize },
     BSET { register: usize, mode: usize, earegister: usize },
@@ -69,25 +68,25 @@ pub enum Instruction {
     MULU { register: usize, mode: usize, earegister: usize },
     NBCD { register: usize, mode: usize, earegister: usize },
     MOVEP { dregister: usize, opmode: usize, aregister: usize },
-    SCC { condition: usize, mode: usize, earegister: usize },
-    ASLRREG { register: usize, count: usize, size: usize, dr: usize, lr: usize },
-    LSLRREG { register: usize, count: usize, size: usize, dr: usize, lr: usize },
-    ROXLR { register: usize, count: usize, size: usize, dr: usize, lr: usize },
-    ROLR { register: usize, count: usize, size: usize, dr: usize, lr: usize },
+    SCC { condition: Condition, mode: usize, earegister: usize },
+    ASLRREG { register: usize, count: usize, size: Size, dr: usize, lr: usize },
+    LSLRREG { register: usize, count: usize, size: Size, dr: usize, lr: usize },
+    ROXLR { register: usize, count: usize, size: Size, dr: usize, lr: usize },
+    ROLR { register: usize, count: usize, size: Size, dr: usize, lr: usize },
     MOVEQ { register: usize, data: usize },
     EXG { mode: usize, rx: usize, ry: usize },
-    CHK { register: usize, size: usize, mode: usize, earegister: usize },
-    MOVEA { register: usize, size: usize, mode: usize, earegister: usize },
-    ADDQ { data: usize, size: usize, mode: usize, earegister: usize },
-    SUBQ { data: usize, size: usize, mode: usize, earegister: usize },
-    BCC { condition: usize, displacement: usize },
+    CHK { register: usize, size: Size, mode: usize, earegister: usize },
+    MOVEA { register: usize, size: Size, mode: usize, earegister: usize },
+    ADDQ { data: usize, size: Size, mode: usize, earegister: usize },
+    SUBQ { data: usize, size: Size, mode: usize, earegister: usize },
+    BCC { condition: Condition, displacement: usize },
     ADD { register: usize, opmode: usize, mode: usize, earegister: usize },
     AND { register: usize, opmode: usize, mode: usize, earegister: usize },
     CMP { register: usize, opmode: usize, mode: usize, earegister: usize },
     EOR { register: usize, opmode: usize, mode: usize, earegister: usize },
     OR { register: usize, opmode: usize, mode: usize, earegister: usize },
     SUB { register: usize, opmode: usize, mode: usize, earegister: usize },
-    MOVE { size: usize, destreg: usize, destmode: usize, srcmode: usize, srcreg: usize },
+    MOVE { size: Size, destreg: usize, destmode: usize, srcmode: usize, srcreg: usize },
 }
 
 pub enum ExtensionWord {
@@ -213,10 +212,14 @@ impl Instruction {
                     *reg = (*reg & 0xffff0000 >> 16) + (*reg & 0xffff << 16);
                     res = *reg;
                 }
-                cpu.set_ccr(CCR::V, false);
-                cpu.set_ccr(CCR::N, res & (1 << 31) > 0);
-                cpu.set_ccr(CCR::Z, res == 0);
-                cpu.set_ccr(CCR::C, false);
+                let ccr = CCRFlags {
+                    c: Some(false),
+                    v: Some(false),
+                    z: Some(res == 0),
+                    n: Some(res & (1 << 31) > 0),
+                    x: None
+                };
+                ccr.set(cpu);
             }
             Self::UNLK { register } => {
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
@@ -227,7 +230,7 @@ impl Instruction {
                 *sp += 4;
             }
             Self::TRAP { vector } => {
-                cpu.set_ccr(CCR::S, true);
+                cpu.supervisor_mode(true);
                 let mut ssp = cpu.ssp.as_ref().borrow_mut();
                 *ssp -= 4;
                 let mut ram_handle = MemoryHandle { reg: None, ptr: Some(*ssp as usize), mem: Some(Rc::clone(&cpu.ram)) };
@@ -280,7 +283,7 @@ impl Instruction {
             Self::MOVEM { size, dr, mode, earegister } => {
                 // FIXME: Handle address register
                 let mut register_mask = cpu.next_instruction();
-                let oplength = 1 << (size + 1);
+                let oplength = size as usize;
                 if dr == 0 {
                     let mut tgt = cpu.memory_handle(mode, earegister, oplength);
                     let mut result;
@@ -335,75 +338,23 @@ impl Instruction {
             Self::ABCD { rx, ry, rm } => {}
             Self::SBCD { rx, ry, rm } => {}
             Self::ADDI { size, mode, earegister } => {
-                let extword = cpu.next_instruction();
-                let handle = cpu.memory_handle(mode, earegister, 1 << size);
-                let operand = handle.read(1 << size).inner();
-                let overflow;
-                let negative;
-                let zero;
-                match size {
-                    0 => {
-                        let summand = (extword & 0x00ff) as u8;
-                        let res = (operand as u8).overflowing_add(summand);
-                        overflow = res.1;
-                        negative = (res.0 as i32) < 0;
-                        zero = res.0 == 0;
-                        handle.write(OpResult::Byte(res.0));
-                    },
-                    1 => {
-                        let res = (operand as u16).overflowing_add(extword);
-                        overflow = res.1;
-                        negative = (res.0 as i32) < 0;
-                        zero = res.0 == 0;
-                        handle.write(OpResult::Word(res.0));
-                    },
-                    2 => {
-                        let extword2 = cpu.next_instruction();
-                        let summand = ((extword as u32) << 16) + extword2 as u32;
-                        let res = operand.overflowing_add(summand);
-                        overflow = res.1;
-                        negative = (res.0 as i32) < 0;
-                        zero = res.0 == 0;
-                        handle.write(OpResult::Long(res.0));
-                    },
-                    _ => panic!("Invalid operand size!")
-                }
-                cpu.set_ccr(CCR::V, overflow);
-                cpu.set_ccr(CCR::N, negative);
-                cpu.set_ccr(CCR::Z, zero);
-                cpu.set_ccr(CCR::C, overflow);
-                cpu.set_ccr(CCR::X, overflow);   
+                let handle = cpu.memory_handle(mode, earegister, size as usize);
+                let operand = handle.read(size as usize);
+                let summand = cpu.immediate_operand(size);
+                let res = operand.add(summand);
+                let result = res.0;
+                let ccr = res.1;
+                handle.write(result);
+                ccr.set(cpu);
             }
             Self::ANDI { size, mode, earegister } => {}
             Self::CLR { size, mode, earegister } => {}
             Self::CMPI { size, mode, earegister } => {
-                let operand = cpu.memory_handle(mode, earegister, 1 << size).read(1 << size);
-                let extword = cpu.next_instruction();
-                match operand {
-                    OpResult::Byte(b) => {
-                        let res = (b as i8).overflowing_sub((extword & 0xff) as i8);
-                        cpu.set_ccr(CCR::N, res.0 < 0);
-                        cpu.set_ccr(CCR::Z, res.0 == 0);
-                        cpu.set_ccr(CCR::V, res.1);
-                        cpu.set_ccr(CCR::C, res.1);
-                    },
-                    OpResult::Word(w) => {
-                        let res = (w as i16).overflowing_sub(extword as i16);
-                        cpu.set_ccr(CCR::N, res.0 < 0);
-                        cpu.set_ccr(CCR::Z, res.0 == 0);
-                        cpu.set_ccr(CCR::V, res.1);
-                        cpu.set_ccr(CCR::C, res.1);
-                    },
-                    OpResult::Long(l) => {
-                        let extword2 = cpu.next_instruction();
-                        let sub = (((extword as u32) << 16) + extword2 as u32) as i32;
-                        let res = (l as i32).overflowing_sub(sub);
-                        cpu.set_ccr(CCR::N, res.0 < 0);
-                        cpu.set_ccr(CCR::Z, res.0 == 0);
-                        cpu.set_ccr(CCR::V, res.1);
-                        cpu.set_ccr(CCR::C, res.1);
-                    },
-                }
+                let operand = cpu.memory_handle(mode, earegister, size as usize).read(size as usize);
+                let src = cpu.immediate_operand(size);
+                let res = operand.sub(src);
+                let ccr = res.1;
+                ccr.set(cpu);
             }
             Self::EORI { size, mode, earegister } => {}
             Self::NEG { size, mode, earegister } => {}
@@ -411,52 +362,22 @@ impl Instruction {
             Self::NOT { size, mode, earegister } => {}
             Self::ORI { size, mode, earegister } => {}
             Self::SUBI { size, mode, earegister } => {
-                let extword = cpu.next_instruction();
-                let handle = cpu.memory_handle(mode, earegister, 1 << size);
-                let operand = handle.read(1 << size).inner();
-                let overflow;
-                let negative;
-                let zero;
-                match size {
-                    0 => {
-                        let subtrahend = (extword & 0x00ff) as u8;
-                        let res = (operand as u8).overflowing_sub(subtrahend);
-                        overflow = res.1;
-                        negative = (res.0 as i32) < 0;
-                        zero = res.0 == 0;
-                        handle.write(OpResult::Byte(res.0));
-                    },
-                    1 => {
-                        let res = (operand as u16).overflowing_sub(extword);
-                        overflow = res.1;
-                        negative = (res.0 as i32) < 0;
-                        zero = res.0 == 0;
-                        handle.write(OpResult::Word(res.0));
-                    },
-                    2 => {
-                        let extword2 = cpu.next_instruction();
-                        let subtrahend = ((extword as u32) << 16) + extword2 as u32;
-                        let res = operand.overflowing_add(subtrahend);
-                        overflow = res.1;
-                        negative = (res.0 as i32) < 0;
-                        zero = res.0 == 0;
-                        handle.write(OpResult::Long(res.0));
-                    },
-                    _ => panic!("Invalid operand size!")
-                }
-                cpu.set_ccr(CCR::V, overflow);
-                cpu.set_ccr(CCR::N, negative);
-                cpu.set_ccr(CCR::Z, zero);
-                cpu.set_ccr(CCR::C, overflow);
-                cpu.set_ccr(CCR::X, overflow);
+                let handle = cpu.memory_handle(mode, earegister, size as usize);
+                let operand = handle.read(size as usize);
+                let subtrahend = cpu.immediate_operand(size);
+                let res = operand.sub(subtrahend);
+                let result = res.0;
+                let ccr = res.1;
+                handle.write(result);
+                ccr.set(cpu);
             }
             Self::TST { size, mode, earegister } => {}
             Self::BRA { displacement } => {
-                if displacement == 0 {
+                cpu.pc = if displacement == 0 {
                     let displacement_i16 = cpu.next_instruction() as i16;
-                    cpu.pc = (cpu.pc as i32 + (displacement_i16 as i32) - 4) as u32;
+                    (cpu.pc as i32 + (displacement_i16 as i32) - 4) as u32 + 2
                 } else {
-                    cpu.pc = (cpu.pc as i32 + (displacement as i8 as i32) - 2) as u32;
+                    (cpu.pc as i32 + (displacement as i8 as i32) - 2) as u32 + 2
                 }
             }
             Self::BSR { displacement } => {}
@@ -512,53 +433,42 @@ impl Instruction {
             Self::EXG { mode, rx, ry } => {}
             Self::CHK { register, size, mode, earegister } => {}
             Self::MOVEA { register, size, mode, earegister } => {
-                if size == 2 {
-                    let src = cpu.memory_handle(mode, earegister, 4).read(4).inner();
-                    let mut dest = cpu.ar[register].as_ref().borrow_mut();
-                    *dest = src;
-                } else if size == 3 {
-                    let src = cpu.memory_handle(mode, earegister, 2).read(2).inner() as i16;
-                    let mut dest = cpu.ar[register].as_ref().borrow_mut();
-                    *dest = src as u32;
-                }
+                match size {
+                    Size::Long => {
+                        let src = cpu.memory_handle(mode, earegister, 4).read(4).inner();
+                        let mut dest = cpu.ar[register].as_ref().borrow_mut();
+                        *dest = src;
+                    } 
+                    Size::Word => {
+                        let src = cpu.memory_handle(mode, earegister, 2).read(2).inner() as i16;
+                        let mut dest = cpu.ar[register].as_ref().borrow_mut();
+                        *dest = src as u32;
+                    }
+                    _ => panic!("Invalid operand size!")
+                } 
             }
             Self::ADDQ { data, size, mode, earegister } => {}
             Self::SUBQ { data, size, mode, earegister } => {}
-            Self::BCC { condition, displacement } => {}
+            Self::BCC { condition, displacement } => {
+                let pc = if displacement == 0 {
+                        let displacement_i16 = cpu.next_instruction() as i16;
+                        (cpu.pc as i32 + (displacement_i16 as i32) - 4) as u32 + 2
+                    } else {
+                        (cpu.pc as i32 + (displacement as i8 as i32) - 2) as u32 + 2
+                    };
+                if condition.evaluate(cpu) {
+                    cpu.pc = pc;
+                } 
+            }
             Self::ADD { register, opmode, mode, earegister } => {
-                let bytesize = 1 << (opmode % 4);
+                let bytesize = Size::from(opmode % 4);
                 let drhandle = cpu.memory_handle(0, register, 0);
-                let ophandle = cpu.memory_handle(mode, earegister, bytesize);
-                let dr = drhandle.read(bytesize).inner();
-                let op = ophandle.read(bytesize).inner();
-                let result: OpResult;
-                let overflow;
-                let negative;
-                let zero;
-                match opmode % 4 {
-                    0 => {
-                        let res = (dr as u8).overflowing_add(op as u8);
-                        result = OpResult::Byte(res.0);
-                        overflow = res.1;
-                        negative = (res.0 as i8) < 0;
-                        zero = res.0 == 0;
-                    }, 
-                    1 => {
-                        let res = (dr as u16).overflowing_add(op as u16);
-                        result = OpResult::Word(res.0);
-                        overflow = res.1;
-                        negative = (res.0 as i16) < 0;
-                        zero = res.0 == 0;
-                    },
-                    2 => {
-                        let res = dr.overflowing_add(op);
-                        result = OpResult::Long(res.0);
-                        overflow = res.1;
-                        negative = (res.0 as i32) < 0;
-                        zero = res.0 == 0;
-                    },
-                    _ => panic!("Invalid Opmode!")
-                }
+                let ophandle = cpu.memory_handle(mode, earegister, bytesize as usize);
+                let dr = drhandle.read(bytesize as usize);
+                let op = ophandle.read(bytesize as usize);
+                let res = dr.add(op);
+                let ccr = res.1;
+                let result = res.0;
                 match opmode >> 2 {
                     0 => {
                         drhandle.write(result);
@@ -568,11 +478,7 @@ impl Instruction {
                     },
                     _ => {}
                 }
-                cpu.set_ccr(CCR::V, overflow);
-                cpu.set_ccr(CCR::N, negative);
-                cpu.set_ccr(CCR::Z, zero);
-                cpu.set_ccr(CCR::C, overflow);
-                cpu.set_ccr(CCR::X, overflow);
+                ccr.set(cpu);
             }
             Self::AND { register, opmode, mode, earegister } => {}
             Self::CMP { register, opmode, mode, earegister } => {}
@@ -580,11 +486,16 @@ impl Instruction {
             Self::OR { register, opmode, mode, earegister } => {}
             Self::SUB { register, opmode, mode, earegister } => {}
             Self::MOVE { size, destreg, destmode, srcmode, srcreg } => {
-                // #FIXME: update CCR
-                let memsize = if size > 1 { 8 - 2 * size } else { size };
-                let src = cpu.memory_handle(srcmode, srcreg, memsize);
-                let dest = cpu.memory_handle(destmode, destreg, memsize);
-                dest.write(src.read(memsize));
+                let src = cpu.memory_handle(srcmode, srcreg, size as usize);
+                let dest = cpu.memory_handle(destmode, destreg, size as usize);
+                let result = src.read(size as usize);
+                dest.write(result);
+                let ccr = CCRFlags { c: Some(false), 
+                                     v: Some(false), 
+                                     z: Some(result.inner() == 0), 
+                                     n: Some(result.sign_extend() < 0),
+                                     x: None };
+                ccr.set(cpu);
             }
         }
     }
@@ -615,18 +526,18 @@ impl Instruction {
                     format!("move a{:},usp", register)
                 }
             }
-            Self::BCHGS { mode, earegister } => format!("bchgs {:}", addr_as_asm(mode, earegister, 0, cpu)),
-            Self::BCLRS { mode, earegister } => format!("bclrs {:}", addr_as_asm(mode, earegister, 0, cpu)),
-            Self::BSETS { mode, earegister } => format!("bsets {:}", addr_as_asm(mode, earegister, 0, cpu)),
-            Self::BTSTS { mode, earegister } => format!("btsts {:}", addr_as_asm(mode, earegister, 0, cpu)),
-            Self::JMP { mode, earegister } => format!("jmp {:}", addr_as_asm(mode, earegister, 0, cpu)),
-            Self::JSR { mode, earegister } => format!("jsr {:}", addr_as_asm(mode, earegister, 0, cpu)),
-            Self::MOVECCR { mode, earegister } => format!("move {:},ccr", addr_as_asm(mode, earegister, 0, cpu)),
-            Self::MOVEFROMSR { mode, earegister } => format!("move sr,{:}", addr_as_asm(mode, earegister, 0, cpu)),
-            Self::MOVETOSR { mode, earegister } => format!("move {:},ccr", addr_as_asm(mode, earegister, 0, cpu)),
-            Self::PEA { mode, earegister } => format!("pea {:}", addr_as_asm(mode, earegister, 0, cpu)),
-            Self::TAS { mode, earegister } => format!("tas {:}", addr_as_asm(mode, earegister, 0, cpu)),
-            Self::EXT { mode, earegister } => format!("ext {:}", addr_as_asm(mode, earegister, 0, cpu)),
+            Self::BCHGS { mode, earegister } => format!("bchgs {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::BCLRS { mode, earegister } => format!("bclrs {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::BSETS { mode, earegister } => format!("bsets {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::BTSTS { mode, earegister } => format!("btsts {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::JMP { mode, earegister } => format!("jmp {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::JSR { mode, earegister } => format!("jsr {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::MOVECCR { mode, earegister } => format!("move {:},ccr", addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::MOVEFROMSR { mode, earegister } => format!("move sr,{:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::MOVETOSR { mode, earegister } => format!("move {:},ccr", addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::PEA { mode, earegister } => format!("pea {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::TAS { mode, earegister } => format!("tas {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::EXT { mode, earegister } => format!("ext {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
             Self::ASLRMEM { mode, earegister } => String::from("aslrmem"),
             Self::LSLRMEM { mode, earegister } => String::from("lslrmem"),
             Self::DBCC { condition, register } => String::from("dbcc"),
@@ -688,25 +599,24 @@ impl Instruction {
             }
             Self::ABCD { rx, ry, rm } => String::from("abcd"),
             Self::SBCD { rx, ry, rm } => String::from("sbcd"),
-            Self::ADDI { size, mode, earegister } => format!("addi.{:} #${:x},{:}", size_as_asm(1 << size), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
-            Self::ANDI { size, mode, earegister } => format!("andi.{:} #${:x},{:}", size_as_asm(1 << size), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
-            Self::CLR { size, mode, earegister } => format!("clr.{:} {:}", size_as_asm(1 << size), addr_as_asm(mode, earegister, size, cpu)),
-            Self::CMPI { size, mode, earegister } => format!("cmpi.{:} #${:x},{:}", size_as_asm(1 << size), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
-            Self::EORI { size, mode, earegister } => format!("eori.{:} #${:x},{:}", size_as_asm(1 << size), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
-            Self::NEG { size, mode, earegister } => format!("neg.{:} {:}", size_as_asm(1 << size), addr_as_asm(mode, earegister, size, cpu)),
-            Self::NEGX { size, mode, earegister } => format!("negx.{:} {:}", size_as_asm(1 << size), addr_as_asm(mode, earegister, size, cpu)),
-            Self::NOT { size, mode, earegister } => format!("not.{:} {:}", size_as_asm(1 << size), addr_as_asm(mode, earegister, size, cpu)),
-            Self::ORI { size, mode, earegister } => format!("ori.{:} #${:x},{:}", size_as_asm(1 << size), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
-            Self::SUBI { size, mode, earegister } => format!("subi.{:} #${:x},{:}", size_as_asm(1 << size), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
-            Self::TST { size, mode, earegister } => format!("tst.{:} {:}", size_as_asm(1 << size), addr_as_asm(mode, earegister, size, cpu)),
+            Self::ADDI { size, mode, earegister } => format!("addi.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
+            Self::ANDI { size, mode, earegister } => format!("andi.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
+            Self::CLR { size, mode, earegister } => format!("clr.{:} {:}", size.as_asm(), addr_as_asm(mode, earegister, size, cpu)),
+            Self::CMPI { size, mode, earegister } => format!("cmpi.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
+            Self::EORI { size, mode, earegister } => format!("eori.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
+            Self::NEG { size, mode, earegister } => format!("neg.{:} {:}", size.as_asm(), addr_as_asm(mode, earegister, size, cpu)),
+            Self::NEGX { size, mode, earegister } => format!("negx.{:} {:}", size.as_asm(), addr_as_asm(mode, earegister, size, cpu)),
+            Self::NOT { size, mode, earegister } => format!("not.{:} {:}", size.as_asm(), addr_as_asm(mode, earegister, size, cpu)),
+            Self::ORI { size, mode, earegister } => format!("ori.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
+            Self::SUBI { size, mode, earegister } => format!("subi.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
+            Self::TST { size, mode, earegister } => format!("tst.{:} {:}", size.as_asm(), addr_as_asm(mode, earegister, size, cpu)),
             Self::BRA { displacement } => {
-                let pc;
-                if displacement == 0 {
+                let pc = if displacement == 0 {
                     let displacement_i16 = cpu.lookahead(0) as i16;
-                    pc = (cpu.pc as i32 + (displacement_i16 as i32) - 2) as u32;
+                    (cpu.pc as i32 + (displacement_i16 as i32) - 2) as u32 + 2
                 } else {
-                    pc = (cpu.pc as i32 + (displacement as i8 as i32) - 2) as u32;
-                }
+                    (cpu.pc as i32 + (displacement as i8 as i32) - 2) as u32 + 2
+                };
                 format!("bra ${:08x}", pc)
             }
             Self::BSR { displacement } => String::from("bsr"),
@@ -724,12 +634,12 @@ impl Instruction {
             Self::MULU { register, mode, earegister } => String::from("mulu"),
             Self::NBCD { register, mode, earegister } => String::from("nbcd"),
             Self::MOVEP { dregister, opmode, aregister } => {
-                let oplength = 1 << ((opmode % 2) + 1);
+                let oplength = Size::from((opmode % 2) + 1);
                 if (opmode - 4) / 2 == 0 {
-                    format!("movep.{:} (d16,a{:}),d{:}", size_as_asm(oplength), aregister, dregister)
+                    format!("movep.{:} (d16,a{:}),d{:}", oplength.as_asm(), aregister, dregister)
                     
                 } else {
-                    format!("movep.{:} d{:},(d16,a{:})", size_as_asm(oplength), dregister, aregister)
+                    format!("movep.{:} d{:},(d16,a{:})", oplength.as_asm(), dregister, aregister)
                 }
             }
             Self::SCC { condition, mode, earegister } => String::from("scc"),
@@ -740,18 +650,26 @@ impl Instruction {
             Self::MOVEQ { register, data } => format!("moveq #${:02x},d{:}", data, register),
             Self::EXG { mode, rx, ry } => String::from("exg"),
             Self::CHK { register, size, mode, earegister } => String::from("chk"),
-            Self::MOVEA { register, size, mode, earegister } => format!("movea.{:} {:},a{:}", size_as_asm(8-2*size), addr_as_asm(mode, earegister, size, cpu), register),
+            Self::MOVEA { register, size, mode, earegister } => format!("movea.{:} {:},a{:}", size.as_asm(), addr_as_asm(mode, earegister, size, cpu), register),
             Self::ADDQ { data, size, mode, earegister } => String::from("addq"),
             Self::SUBQ { data, size, mode, earegister } => String::from("subq"),
-            Self::BCC { condition, displacement } => String::from("bcc"),
+            Self::BCC { condition, displacement } => {
+                let pc = if displacement == 0 {
+                        let displacement_i16 = cpu.lookahead(0) as i16;
+                        (cpu.pc as i32 + (displacement_i16 as i32) - 2) as u32 + 2
+                    } else {
+                        (cpu.pc as i32 + (displacement as i8 as i32) - 2) as u32 + 2
+                    };
+                format!("b{:} ${:08x}", condition.as_asm(), pc)
+            },
             Self::ADD { register, opmode, mode, earegister } => {
-                let bytesize = 1 << (opmode % 4);
+                let bytesize = Size::from(opmode % 4);
                 match opmode >> 2 {
                     0 => {
-                        format!("add.{:} {:},d{:}", size_as_asm(bytesize), addr_as_asm(mode, earegister, bytesize, cpu), register)
+                        format!("add.{:} {:},d{:}", bytesize.as_asm(), addr_as_asm(mode, earegister, bytesize, cpu), register)
                     },
                     _ => {
-                        format!("add.{:} d{:},{:}", size_as_asm(bytesize), register, addr_as_asm(mode, earegister, bytesize, cpu))
+                        format!("add.{:} d{:},{:}", bytesize.as_asm(), register, addr_as_asm(mode, earegister, bytesize, cpu))
                     }
                 }
             }
@@ -761,15 +679,14 @@ impl Instruction {
             Self::OR { register, opmode, mode, earegister } => String::from("or"),
             Self::SUB { register, opmode, mode, earegister } => String::from("sub"),
             Self::MOVE { size, destreg, destmode, srcmode, srcreg } => {
-                let memsize = if size > 1 { 8 - 2 * size } else { size };
-                format!("move.{:} {:},{:}", size_as_asm(memsize), addr_as_asm(srcmode, srcreg, memsize, cpu), addr_as_asm(destmode, destreg, memsize, cpu))
+                format!("move.{:} {:},{:}", size.as_asm(), addr_as_asm(srcmode, srcreg, size, cpu), addr_as_asm(destmode, destreg, size, cpu))
             }
         }        
     }
 }
 
 fn privilege_violation(cpu: &mut CPU) {
-    cpu.set_ccr(CCR::S, true);
+    cpu.supervisor_mode(true);
     let mut ssp = cpu.ssp.as_ref().borrow_mut();
     *ssp -= 4;
     let mut ram_handle = MemoryHandle { reg: None, ptr: Some(*ssp as usize), mem: Some(Rc::clone(&cpu.ram)) };
@@ -780,15 +697,7 @@ fn privilege_violation(cpu: &mut CPU) {
     cpu.pc = 0x20;
 }
 
-fn size_as_asm(size: usize) -> String {
-    match size {
-        1 => String::from("b"),
-        2 => String::from("w"),
-        _ => String::from("l"),
-    }
-}
-
-fn addr_as_asm(mode: usize, earegister: usize, size: usize, cpu: &CPU) -> String {
+fn addr_as_asm(mode: usize, earegister: usize, size: Size, cpu: &CPU) -> String {
     match mode {
         // Data register direct mode
         0 => format!("d{:}", earegister),
@@ -810,7 +719,7 @@ fn addr_as_asm(mode: usize, earegister: usize, size: usize, cpu: &CPU) -> String
                     ExtensionWord::BEW { da, register: iregister, wl: _, scale, displacement } => {
                         let da_flag = if da == 0 { "d" } else { "a" };
                         let displ = (displacement & 0xff) as i8;
-                        format!("({:x}a{:},{:}{:}.{:}*{:})", displ, earegister, da_flag, iregister, size_as_asm(size), scale)
+                        format!("({:x}a{:},{:}{:}.{:}*{:})", displ, earegister, da_flag, iregister, size.as_asm(), scale)
                     }
                     // Address Register Indirect with Index (Base Displacement) Mode
                     ExtensionWord::FEW { da, register: iregister, wl: _, scale, bs: _, is: _, bdsize: _, iis: _ } => {
@@ -820,7 +729,7 @@ fn addr_as_asm(mode: usize, earegister: usize, size: usize, cpu: &CPU) -> String
                         for j in 0..bdsize {
                             displacement += (cpu.lookahead(j + 1) * (1 << (8 * (bdsize - j - 1)))) as u32;
                         }
-                        format!("({:x}a{:},{:}{:}.{:}*{:})", displacement as i32, earegister, da_flag, iregister, size_as_asm(size), scale)
+                        format!("({:x}a{:},{:}{:}.{:}*{:})", displacement as i32, earegister, da_flag, iregister, size.as_asm(), scale)
                     }
                 }
             } else {
@@ -853,9 +762,9 @@ fn addr_as_asm(mode: usize, earegister: usize, size: usize, cpu: &CPU) -> String
                 4 => {
                     // Immediate Data
                     match size {
-                        1 => format!("#${:02x}", (extword & 0xff) as u8),
-                        2 => format!("#${:04x}", extword),
-                        4 => format!("#${:04x}{:04x}", extword, cpu.lookahead(1)),
+                        Size::Byte => format!("#${:02x}", (extword & 0xff) as u8),
+                        Size::Word => format!("#${:04x}", extword),
+                        Size::Long => format!("#${:04x}{:04x}", extword, cpu.lookahead(1)),
                         _ => panic!("Invalid operand size!")
                     }
                 }
@@ -863,5 +772,89 @@ fn addr_as_asm(mode: usize, earegister: usize, size: usize, cpu: &CPU) -> String
             }
         }
         _ => panic!("Invalid addressing mode!"),
+    }
+}
+
+#[derive(Copy, Clone)]
+pub enum Condition {
+    T = 0,
+    F = 1,
+    HI = 2,
+    LS = 3,
+    CC = 4,
+    CS = 5,
+    NE = 6,
+    EQ = 7,
+    VC = 8,
+    VS = 9,
+    PL = 10,
+    MI = 11,
+    GE = 12,
+    LT = 13,
+    GT = 14,
+    LE = 15
+}
+
+impl Condition {
+    pub fn from(condition: usize) -> Self {
+        match condition {
+            0 => Self::T,
+            1 => Self::F,
+            2 => Self::HI,
+            3 => Self::LS,
+            4 => Self::CC,
+            5 => Self::CS,
+            6 => Self::NE,
+            7 => Self::EQ,
+            8 => Self::VC,
+            9 => Self::VS,
+            10 => Self::PL,
+            11 => Self::MI,
+            12 => Self::GE,
+            13 => Self::LT,
+            14 => Self::GT,
+            15 => Self::LE,
+            _ => panic!("Invalid condition code!")
+        }
+    }
+    pub fn as_asm(&self) -> String {
+        match *self {
+            Self::T => String::from("t"),
+            Self::F => String::from("f"),
+            Self::HI => String::from("hi"),
+            Self::LS => String::from("ls"),
+            Self::CC => String::from("cc"),
+            Self::CS => String::from("cs"),
+            Self::NE => String::from("ne"),
+            Self::EQ => String::from("eq"),
+            Self::VC => String::from("vc"),
+            Self::VS => String::from("vs"),
+            Self::PL => String::from("pl"),
+            Self::MI => String::from("mi"),
+            Self::GE => String::from("ge"),
+            Self::LT => String::from("lt"),
+            Self::GT => String::from("gt"),
+            Self::LE => String::from("le"),
+        }
+    }
+    pub fn evaluate(&self, cpu: &CPU) -> bool {
+        match *self {
+            Self::T => true,
+            Self::F => false,
+            Self::HI => !cpu.ccr(CCR::C) && !cpu.ccr(CCR::Z),
+            Self::LS => cpu.ccr(CCR::C) || cpu.ccr(CCR::Z),
+            Self::CC => !cpu.ccr(CCR::C),
+            Self::CS => cpu.ccr(CCR::C),
+            Self::NE => !cpu.ccr(CCR::Z),
+            Self::EQ => cpu.ccr(CCR::Z),
+            Self::VC => !cpu.ccr(CCR::V),
+            Self::VS => cpu.ccr(CCR::V),
+            Self::PL => !cpu.ccr(CCR::N),
+            Self::MI => cpu.ccr(CCR::N),
+            Self::GE => (cpu.ccr(CCR::N) && cpu.ccr(CCR::V)) || (!cpu.ccr(CCR::N) && !cpu.ccr(CCR::V)),
+            Self::LT => (cpu.ccr(CCR::N) && !cpu.ccr(CCR::V)) || (!cpu.ccr(CCR::N) && cpu.ccr(CCR::V)),
+            Self::GT => (cpu.ccr(CCR::N) && cpu.ccr(CCR::V) && !cpu.ccr(CCR::Z)) || (!cpu.ccr(CCR::N) && !cpu.ccr(CCR::V) && !cpu.ccr(CCR::Z)),
+            Self::LE => cpu.ccr(CCR::Z) || (cpu.ccr(CCR::N) && !cpu.ccr(CCR::V)) || (!cpu.ccr(CCR::N) && cpu.ccr(CCR::V)),
+        }
     }
 }

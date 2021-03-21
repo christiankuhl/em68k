@@ -1,6 +1,7 @@
 use crate::instructions::ExtensionWord::*;
 use crate::instructions::Instruction::*;
-use crate::instructions::{ExtensionWord, Instruction};
+use crate::instructions::{ExtensionWord, Instruction, Condition};
+use crate::memory::Size;
 
 // Specificity 16 - full word opcodes
 const _ANDICCR: u16 = 0x23c;
@@ -237,12 +238,13 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
         _ => {}
     }
     match split_instruction(opcode, vec![4, 4, 5, 3]).as_slice() {
-        [5, condition, _DBCC, register] => return Some(DBCC { condition: *condition, register: *register }),
+        [5, condition, _DBCC, register] if condition > &1 => return Some(DBCC { condition: Condition::from(*condition), register: *register }),
         _ => {}
     }
-    match split_instruction(opcode, vec![7, 1, 2, 3, 3]).as_slice() {
+    // FIXME: sort this elsewhere
+    match split_instruction(opcode, vec![5, 1, 3, 1, 3, 3]).as_slice() {
         [_MOVEM, dr, 1, size, mode, earegister] => {
-            return Some(MOVEM { size: *size, dr: *dr, mode: *mode, earegister: *earegister })
+            return Some(MOVEM { size: Size::from(1 << (*size + 1)), dr: *dr, mode: *mode, earegister: *earegister })
         }
         _ => {}
     }
@@ -253,17 +255,17 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
     }
     // Specificity 8
     match split_instruction(opcode, vec![8, 2, 3, 3]).as_slice() {
-        [_ADDI, size, mode, earegister] if size < &3 => return Some(ADDI { size: *size, mode: *mode, earegister: *earegister }),
-        [_ANDI, size, mode, earegister] => return Some(ANDI { size: *size, mode: *mode, earegister: *earegister }),
-        [_CLR, size, mode, earegister] => return Some(CLR { size: *size, mode: *mode, earegister: *earegister }),
-        [_CMPI, size, mode, earegister] => return Some(CMPI { size: *size, mode: *mode, earegister: *earegister }),
-        [_EORI, size, mode, earegister] => return Some(EORI { size: *size, mode: *mode, earegister: *earegister }),
-        [_NEG, size, mode, earegister] => return Some(NEG { size: *size, mode: *mode, earegister: *earegister }),
-        [_NEGX, size, mode, earegister] => return Some(NEGX { size: *size, mode: *mode, earegister: *earegister }),
-        [_NOT, size, mode, earegister] => return Some(NOT { size: *size, mode: *mode, earegister: *earegister }),
-        [_ORI, size, mode, earegister] => return Some(ORI { size: *size, mode: *mode, earegister: *earegister }),
-        [_SUBI, size, mode, earegister] => return Some(SUBI { size: *size, mode: *mode, earegister: *earegister }),
-        [_TST, size, mode, earegister] => return Some(TST { size: *size, mode: *mode, earegister: *earegister }),
+        [_ADDI, size, mode, earegister] if size < &3 => return Some(ADDI { size: Size::from(*size), mode: *mode, earegister: *earegister }),
+        [_ANDI, size, mode, earegister] => return Some(ANDI { size: Size::from(*size), mode: *mode, earegister: *earegister }),
+        [_CLR, size, mode, earegister] => return Some(CLR { size: Size::from(*size), mode: *mode, earegister: *earegister }),
+        [_CMPI, size, mode, earegister] => return Some(CMPI { size: Size::from(*size), mode: *mode, earegister: *earegister }),
+        [_EORI, size, mode, earegister] => return Some(EORI { size: Size::from(*size), mode: *mode, earegister: *earegister }),
+        [_NEG, size, mode, earegister] => return Some(NEG { size: Size::from(*size), mode: *mode, earegister: *earegister }),
+        [_NEGX, size, mode, earegister] => return Some(NEGX { size: Size::from(*size), mode: *mode, earegister: *earegister }),
+        [_NOT, size, mode, earegister] => return Some(NOT { size: Size::from(*size), mode: *mode, earegister: *earegister }),
+        [_ORI, size, mode, earegister] => return Some(ORI { size: Size::from(*size), mode: *mode, earegister: *earegister }),
+        [_SUBI, size, mode, earegister] => return Some(SUBI { size: Size::from(*size), mode: *mode, earegister: *earegister }),
+        [_TST, size, mode, earegister] => return Some(TST { size: Size::from(*size), mode: *mode, earegister: *earegister }),
         _ => {}
     }
     match split_instruction(opcode, vec![8, 8]).as_slice() {
@@ -272,12 +274,12 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
         _ => {}
     }
     match split_instruction(opcode, vec![4, 3, 1, 2, 3, 3]).as_slice() {
-        [_CMPM, ax, 1, size, 1, ay] => return Some(CMPM { ax: *ax, ay: *ay, size: *size }),
+        [_CMPM, ax, 1, size, 1, ay] => return Some(CMPM { ax: *ax, ay: *ay, size: Size::from(*size) }),
         _ => {}
     }
     match split_instruction(opcode, vec![4, 3, 1, 2, 2, 1, 3]).as_slice() {
-        [_ADDX, rx, 1, size, 0, rm, ry] => return Some(ADDX { rx: *rx, ry: *ry, rm: *rm, size: *size }),
-        [_SUBX, rx, 1, size, 0, rm, ry] => return Some(SUBX { rx: *rx, ry: *ry, rm: *rm, size: *size }),
+        [_ADDX, rx, 1, size, 0, rm, ry] => return Some(ADDX { rx: *rx, ry: *ry, rm: *rm, size: Size::from(*size) }),
+        [_SUBX, rx, 1, size, 0, rm, ry] => return Some(SUBX { rx: *rx, ry: *ry, rm: *rm, size: Size::from(*size) }),
         _ => {}
     }
     // Specificity 7
@@ -319,23 +321,23 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
     }
     // Specificity 6
     match split_instruction(opcode, vec![4, 4, 2, 3, 3]).as_slice() {
-        [_SCC, condition, 3, mode, earegister] => {
-            return Some(SCC { condition: *condition, mode: *mode, earegister: *earegister })
+        [_SCC, condition, 3, mode, earegister] if condition > &1 => {
+            return Some(SCC { condition: Condition::from(*condition), mode: *mode, earegister: *earegister })
         }
         _ => {}
     }
     match split_instruction(opcode, vec![4, 3, 1, 2, 1, 2, 3]).as_slice() {
         [0xe, count, dr, size, lr, _ASLRREG, register] => {
-            return Some(ASLRREG { register: *register, count: *count, size: *size, dr: *dr, lr: *lr })
+            return Some(ASLRREG { register: *register, count: *count, size: Size::from(*size), dr: *dr, lr: *lr })
         }
         [0xe, count, dr, size, lr, _LSLRREG, register] => {
-            return Some(LSLRREG { register: *register, count: *count, size: *size, dr: *dr, lr: *lr })
+            return Some(LSLRREG { register: *register, count: *count, size: Size::from(*size), dr: *dr, lr: *lr })
         }
         [0xe, count, dr, size, lr, _ROXLR, register] => {
-            return Some(ROXLR { register: *register, count: *count, size: *size, dr: *dr, lr: *lr })
+            return Some(ROXLR { register: *register, count: *count, size: Size::from(*size), dr: *dr, lr: *lr })
         }
         [0xe, count, dr, size, lr, _ROLR, register] => {
-            return Some(ROLR { register: *register, count: *count, size: *size, dr: *dr, lr: *lr })
+            return Some(ROLR { register: *register, count: *count, size: Size::from(*size), dr: *dr, lr: *lr })
         }
         _ => {}
     }
@@ -350,29 +352,29 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
     }
     // Specificity 5
     match split_instruction(opcode, vec![4, 3, 2, 1, 3, 3]).as_slice() {
-        [_CHK, register, size, 0, mode, earegister] => {
-            return Some(CHK { register: *register, size: *size, mode: *mode, earegister: *earegister })
+        [_CHK, register, size, 0, mode, earegister] if size == &2 || size == &3 => {
+            return Some(CHK { register: *register, size: Size::from(4 - *size), mode: *mode, earegister: *earegister })
         }
         _ => {}
     }
     match split_instruction(opcode, vec![2, 2, 3, 3, 3, 3]).as_slice() {
         [_MOVEA, size, register, 1, mode, earegister] if size == &2 || size == &3 => {
-            return Some(MOVEA { register: *register, size: *size, mode: *mode, earegister: *earegister })
+            return Some(MOVEA { register: *register, size: Size::from(4 - *size), mode: *mode, earegister: *earegister })
         }
         _ => {}
     }
     match split_instruction(opcode, vec![4, 3, 1, 2, 3, 3]).as_slice() {
         [0x5, data, _ADDQ, size, mode, earegister] => {
-            return Some(ADDQ { data: *data, size: *size, mode: *mode, earegister: *earegister })
+            return Some(ADDQ { data: *data, size: Size::from(1 << (4 - *size)), mode: *mode, earegister: *earegister })
         }
         [0x5, data, _SUBQ, size, mode, earegister] => {
-            return Some(SUBQ { data: *data, size: *size, mode: *mode, earegister: *earegister })
+            return Some(SUBQ { data: *data, size: Size::from(1 << (4 - *size)), mode: *mode, earegister: *earegister })
         }
         _ => {}
     }
     // Specificity 4
     match split_instruction(opcode, vec![4, 4, 8]).as_slice() {
-        [_BCC, condition, displacement] => return Some(BCC { condition: *condition, displacement: *displacement }),
+        [_BCC, condition, displacement] if condition < &13 => return Some(BCC { condition: Condition::from(*condition), displacement: *displacement }),
         _ => {}
     }
     match split_instruction(opcode, vec![4, 3, 3, 3, 3]).as_slice() {
@@ -398,9 +400,9 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
     }
     // Specificity 2
     match split_instruction(opcode, vec![2, 2, 3, 3, 3, 3]).as_slice() {
-        [_MOVE, size, destreg, destmode, srcmode, srcreg] if size <= &3 => {
+        [_MOVE, size, destreg, destmode, srcmode, srcreg] if size <= &3 && size > &0 => {
             return Some(MOVE {
-                size: *size,
+                size: Size::from((4 - *size) % 3),
                 destreg: *destreg,
                 destmode: *destmode,
                 srcmode: *srcmode,
@@ -411,3 +413,7 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
     }
     None
 }
+
+
+
+

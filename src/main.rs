@@ -1,3 +1,6 @@
+//TEMP
+#![allow(unused_variables)]
+
 use std::cell::RefCell;
 use std::fmt;
 use std::fs;
@@ -8,7 +11,7 @@ use parser::{parse_extension_word, parse_instruction};
 mod instructions;
 use instructions::ExtensionWord::*;
 mod memory;
-use memory::MemoryHandle;
+use memory::{MemoryHandle, OpResult, Size};
 
 const RAM_SIZE: usize = 1 << 20;
 
@@ -31,6 +34,27 @@ pub struct CPU {
     ram: RamPtr,     // Pointer to RAM
 }
 
+pub struct CCRFlags {
+    c: Option<bool>,
+    v: Option<bool>,
+    z: Option<bool>,
+    n: Option<bool>,
+    x: Option<bool>,
+}
+
+impl CCRFlags {
+    pub fn new() -> CCRFlags {
+        CCRFlags {c: None, v: None, z: None, n: None, x: None}
+    }
+    pub fn set(&self, cpu: &mut CPU) {
+        if let Some(value) = self.c { set_bit(&mut cpu.sr, CCR::C as usize, value) };
+        if let Some(value) = self.v { set_bit(&mut cpu.sr, CCR::V as usize, value) };
+        if let Some(value) = self.z { set_bit(&mut cpu.sr, CCR::Z as usize, value) };
+        if let Some(value) = self.n { set_bit(&mut cpu.sr, CCR::N as usize, value) };
+        if let Some(value) = self.x { set_bit(&mut cpu.sr, CCR::X as usize, value) };
+    }
+}
+
 pub enum CCR {
     C = 0,
     V = 1,
@@ -39,6 +63,7 @@ pub enum CCR {
     X = 4,
     S = 13
 }
+
 
 pub struct Emulator {
     cpu: CPU,    // CPU
@@ -238,26 +263,36 @@ impl CPU {
             _ => panic!("Invalid addressing mode!"),
         }
     }
-    pub fn set_ccr(&mut self, bit: CCR, value: bool) {
-        if value {
-            self.sr |= 1 << (bit as u8)
-        } else {
-            self.sr |= !(1 << (bit as u8))
-        }
+    pub fn supervisor_mode(&mut self, value: bool) {
+        set_bit(&mut self.sr, CCR::S as usize, value);
     }
     pub fn in_supervisor_mode(&self) -> bool {
-        self.sr & (1 << (CCR::S as u32)) != 0
+        self.ccr(CCR::S)
     }
     pub fn lookahead(&self, offset: usize) -> u16 {
         let raw_mem = *self.ram.borrow();
         let ptr = self.pc as usize + 2 * offset;
         u16::from_be_bytes([raw_mem[ptr], raw_mem[ptr + 1]])
     }
+    pub fn ccr(&self, bit: CCR) -> bool {
+        self.sr & (1 << (bit as u8)) != 0
+    }
+    pub fn immediate_operand(&mut self, size: Size) -> OpResult {
+        let extword = self.next_instruction();
+        match size {
+            Size::Byte => OpResult::Byte((extword & 0xff) as u8),
+            Size::Word => OpResult::Word(extword),
+            Size::Long => {
+                let extword2 = self.next_instruction();
+                OpResult::Long(((extword as u32) << 16) + extword2 as u32)
+            }
+        }
+    }
 }
 
 impl fmt::Debug for CPU {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s = String::from("\nRegisters:\n\n");
+        let mut s = String::from("\nRegisters:\n");
         for j in 0..8 {
             s.push_str(&format!(
                 "A{j}: {a:08x}     D{j}: {d:08x}\n",
@@ -266,8 +301,22 @@ impl fmt::Debug for CPU {
                 d = *self.dr[j].borrow()
             ));
         }
-        s.push_str(&format!("\nProgram Counter: {:08x}", self.pc));
+        s.push_str(&format!("\nCCR: X: {:} N: {:} Z: {:} V: {:} C: {:}", 
+            self.ccr(CCR::X) as u8, 
+            self.ccr(CCR::N) as u8, 
+            self.ccr(CCR::Z) as u8, 
+            self.ccr(CCR::V) as u8, 
+            self.ccr(CCR::C) as u8));
+        s.push_str(&format!("\nPC: {:08x}", self.pc));
         write!(f, "{}", s)
+    }
+}
+
+fn set_bit(bitfield: &mut u16, bit: usize, value: bool) {
+    if value {
+        *bitfield |= 1 << (bit as u8);
+    } else {
+        *bitfield &= !(1 << (bit as u8));
     }
 }
 

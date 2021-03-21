@@ -1,10 +1,35 @@
-use crate::{RamPtr, RegPtr};
+use crate::{RamPtr, RegPtr, CCRFlags};
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum OpResult {
     Byte(u8),
     Word(u16),
     Long(u32),
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum Size {
+    Byte = 1,
+    Word = 2,
+    Long = 4,
+}
+
+impl Size {
+    pub fn from(size: usize) -> Self {
+        match size {
+            0 => Self::Byte,
+            1 => Self::Word,
+            2 => Self::Long,
+            _ => panic!("Illegal operand size!") 
+        }
+    }
+    pub fn as_asm(&self) -> String {
+        match *self {
+            Self::Byte => String::from("b"),
+            Self::Word => String::from("w"),
+            Self::Long => String::from("l"),
+        }
+    }
 }
 
 impl OpResult {
@@ -13,6 +38,107 @@ impl OpResult {
             OpResult::Byte(b) => b as u32,
             OpResult::Word(w) => w as u32,
             OpResult::Long(l) => l,
+        }
+    }
+    pub fn sign_extend(&self) -> i32 {
+        match *self {
+            OpResult::Byte(b) => b as i8 as i32,
+            OpResult::Word(w) => w as i16 as i32,
+            OpResult::Long(l) => l as i32,
+        }
+    }
+    pub fn sub(&self, other: OpResult) -> (OpResult, CCRFlags) {
+        let mut ccr = CCRFlags::new();
+        match *self {
+            OpResult::Byte(dest_u) => {
+                if let OpResult::Byte(src_u) = other {
+                    let src = src_u as i8;
+                    let dest = dest_u as i8;
+                    let res = dest.overflowing_sub(src);
+                    ccr.n = Some(res.0 < 0);
+                    ccr.z = Some(res.0 == 0);
+                    ccr.v = Some((src >= 0 && dest < 0 && res.0 >= 0) || (src < 0 && dest >= 0 && res.0 < 0));
+                    ccr.c = Some((src < 0 && dest >= 0) || (res.0 < 0 && dest >= 0) || (src < 0 && res.0 < 0));
+                    (OpResult::Byte(res.0 as u8), ccr)
+                } else {
+                    panic!("Unsupported operation!")
+                }
+            }
+            OpResult::Word(dest_u) => {
+                if let OpResult::Word(src_u) = other {
+                    let src = src_u as i16;
+                    let dest = dest_u as i16;
+                    let res = dest.overflowing_sub(src);
+                    ccr.n = Some(res.0 < 0);
+                    ccr.z = Some(res.0 == 0);
+                    ccr.v = Some((src >= 0 && dest < 0 && res.0 >= 0) || (src < 0 && dest >= 0 && res.0 < 0));
+                    ccr.c = Some((src < 0 && dest >= 0) || (res.0 < 0 && dest >= 0) || (src < 0 && res.0 < 0));
+                    (OpResult::Word(res.0 as u16), ccr)
+                } else {
+                    panic!("Unsupported operation!")
+                }
+            }
+            OpResult::Long(dest_u) => {
+                if let OpResult::Long(src_u) = other {
+                    let src = src_u as i32;
+                    let dest = dest_u as i32;
+                    let res = dest.overflowing_sub(src);
+                    ccr.n = Some(res.0 < 0);
+                    ccr.z = Some(res.0 == 0);
+                    ccr.v = Some((src >= 0 && dest < 0 && res.0 >= 0) || (src < 0 && dest >= 0 && res.0 < 0));
+                    ccr.c = Some((src < 0 && dest >= 0) || (res.0 < 0 && dest >= 0) || (src < 0 && res.0 < 0));
+                    (OpResult::Byte(res.0 as u8), ccr)
+                } else {
+                    panic!("Unsupported operation!")
+                }
+            }
+        }
+    }
+    pub fn add(&self, other: OpResult) -> (OpResult, CCRFlags) {
+        let mut ccr = CCRFlags::new();
+        match *self {
+            OpResult::Byte(dest_u) => {
+                if let OpResult::Byte(src_u) = other {
+                    let src = src_u as i8;
+                    let dest = dest_u as i8;
+                    let res = dest.overflowing_add(src);
+                    ccr.n = Some(res.0 < 0);
+                    ccr.z = Some(res.0 == 0);
+                    ccr.v = Some((src < 0 && dest < 0 && res.0 >= 0) || (src >= 0 && dest >= 0 && res.0 < 0));
+                    ccr.c = Some((src < 0 && dest < 0) || (res.0 >= 0 && dest < 0) || (src < 0 && res.0 >= 0));
+                    (OpResult::Byte(res.0 as u8), ccr)
+                } else {
+                    panic!("Unsupported operation!")
+                }
+            }
+            OpResult::Word(dest_u) => {
+                if let OpResult::Word(src_u) = other {
+                    let src = src_u as i16;
+                    let dest = dest_u as i16;
+                    let res = dest.overflowing_add(src);
+                    ccr.n = Some(res.0 < 0);
+                    ccr.z = Some(res.0 == 0);
+                    ccr.v = Some((src < 0 && dest < 0 && res.0 >= 0) || (src >= 0 && dest >= 0 && res.0 < 0));
+                    ccr.c = Some((src < 0 && dest < 0) || (res.0 >= 0 && dest < 0) || (src < 0 && res.0 >= 0));
+                    (OpResult::Word(res.0 as u16), ccr)
+                } else {
+                    panic!("Unsupported operation!")
+                }
+            }
+            OpResult::Long(dest_u) => {
+                if let OpResult::Long(src_u) = other {
+                    let src = src_u as i32;
+                    let dest = dest_u as i32;
+                    let res = dest.overflowing_add(src);
+                    ccr.n = Some(res.0 < 0);
+                    ccr.z = Some(res.0 == 0);
+                    ccr.v = Some((src < 0 && dest < 0 && res.0 >= 0) || (src >= 0 && dest >= 0 && res.0 < 0));
+                    ccr.c = Some((src < 0 && dest < 0) || (res.0 >= 0 && dest < 0) || (src < 0 && res.0 >= 0));
+                    (OpResult::Byte(res.0 as u8), ccr)
+                } else {
+                    panic!("Unsupported operation!")
+                }
+            }
         }
     }
 }
