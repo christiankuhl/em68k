@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use crate::{CPU, CCR, CCRFlags};
+use crate::processor::{CPU, CCR, CCRFlags};
 use crate::memory::{OpResult, MemoryHandle, Size};
 use crate::parser::parse_extension_word;
 

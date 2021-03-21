@@ -1,4 +1,11 @@
-use crate::{RamPtr, RegPtr, CCRFlags};
+use std::cell::RefCell;
+use std::rc::Rc;
+use crate::processor::CCRFlags;
+
+pub const RAM_SIZE: usize = 1 << 20;
+
+pub type RamPtr = Rc<RefCell<[u8; RAM_SIZE]>>;
+pub type RegPtr = Rc<RefCell<u32>>;
 
 #[derive(Debug, Copy, Clone)]
 pub enum OpResult {
