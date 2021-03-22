@@ -7,7 +7,7 @@ use crate::memory::{MemoryHandle, OpResult, Size, RamPtr, RegPtr};
 
 pub struct CPU {
     pub pc: u32,         // Program counter
-    pub sr: u16,         // Status register
+    pub sr: u32,         // Status register
     pub dr: [RegPtr; 8], // Data registers
     pub ar: [RegPtr; 8], // Address registers
     pub ssp: RegPtr,     // Supervisory stack pointer
@@ -61,7 +61,7 @@ impl CPU {
         self.pc += 2;
         instr
     }
-    pub fn memory_handle(&mut self, mode: usize, register: usize, size: usize) -> MemoryHandle {
+    pub fn memory_handle(&mut self, mode: usize, register: usize, size: Size) -> MemoryHandle {
         match mode {
             // Data register direct mode
             0 => MemoryHandle { reg: Some(Rc::clone(&self.dr[register])), ptr: None, mem: None },
@@ -75,7 +75,7 @@ impl CPU {
             // Address register indirect with postincrement mode
             3 => {
                 let ptr = (*self.ar[register]).borrow().clone() as usize;
-                if register == 7 && size == 1 {
+                if register == 7 && size as u32 == 1 {
                     *self.ar[register].borrow_mut() += 2;
                 } else {
                     *self.ar[register].borrow_mut() += size as u32;
@@ -84,7 +84,7 @@ impl CPU {
             }
             // Address register indirect with predecrement mode
             4 => {
-                if register == 7 && size == 1 {
+                if register == 7 && size as u32 == 1 {
                     *self.ar[register].borrow_mut() -= 2;
                 } else {
                     *self.ar[register].borrow_mut() -= size as u32;
@@ -159,17 +159,17 @@ impl CPU {
                     4 => {
                         // Immediate Data
                         match size {
-                            1 => MemoryHandle {
+                            Size::Byte => MemoryHandle {
                                 reg: None,
                                 ptr: Some(self.pc as usize - 1),
                                 mem: Some(Rc::clone(&self.ram)),
                             },
-                            2 => MemoryHandle {
+                            Size::Word => MemoryHandle {
                                 reg: None,
                                 ptr: Some(self.pc as usize - 2),
                                 mem: Some(Rc::clone(&self.ram)),
                             },
-                            4 => {
+                            Size::Long => {
                                 self.pc += 2;
                                 MemoryHandle {
                                     reg: None,
@@ -177,7 +177,6 @@ impl CPU {
                                     mem: Some(Rc::clone(&self.ram)),
                                 }
                             }
-                            _ => panic!("Unexpected operand size!"),
                         }
                     }
                     _ => panic!("Invalid register!"),
@@ -235,13 +234,18 @@ impl fmt::Debug for CPU {
     }
 }
 
-fn set_bit(bitfield: &mut u16, bit: usize, value: bool) {
+pub fn set_bit(bitfield: &mut u32, bit: usize, value: bool) {
     if value {
         *bitfield |= 1 << (bit as u8);
     } else {
         *bitfield &= !(1 << (bit as u8));
     }
 }
+
+pub fn get_bit(bitfield: u32, bit: usize) -> bool {
+    bitfield & (1 << bit) != 0
+}
+
 
 fn pause() {
     let mut stdout = stdout();
