@@ -92,7 +92,7 @@ const _DIVU: usize = 0x5;
 const _LEA: usize = 0x7;
 const _MOVEP: usize = 0x1;
 const _MULS: usize = 0x7;
-const _MULU: usize = 0x5;
+const _MULU: usize = 0x3;
 const _NBCD: usize = 0x5;
 
 // Specificity 6
@@ -228,13 +228,13 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
         _ => {}
     }
     match split_instruction(opcode, vec![7, 3, 3, 3]).as_slice() {
-        [_EXT, mode, 0, earegister] => return Some(EXT { mode: *mode, earegister: *earegister }),
+        [_EXT, opmode, 0, register] if opmode == &2 || opmode == &3 => return Some(EXT { opmode: *opmode, register: *register }),
         _ => {}
     }
     // Specificity 9
     match split_instruction(opcode, vec![7, 1, 2, 3, 3]).as_slice() {
-        [_ASLRMEM, dr, 3, mode, earegister] => return Some(ASLRMEM { mode: *mode, earegister: *earegister }),
-        [_LSLRMEM, dr, 3, mode, earegister] => return Some(LSLRMEM { mode: *mode, earegister: *earegister }),
+        [_ASLRMEM, dr, 3, mode, earegister] => return Some(ASLRMEM { dr: *dr, mode: *mode, earegister: *earegister }),
+        [_LSLRMEM, dr, 3, mode, earegister] => return Some(LSLRMEM { dr: *dr, mode: *mode, earegister: *earegister }),
         _ => {}
     }
     match split_instruction(opcode, vec![4, 4, 5, 3]).as_slice() {
@@ -327,17 +327,17 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
         _ => {}
     }
     match split_instruction(opcode, vec![4, 3, 1, 2, 1, 2, 3]).as_slice() {
-        [0xe, count, dr, size, lr, _ASLRREG, register] => {
-            return Some(ASLRREG { register: *register, count: *count, size: Size::from(*size), dr: *dr, lr: *lr })
+        [0xe, count, dr, size, ir, _ASLRREG, register] => {
+            return Some(ASLRREG { register: *register, count: *count, size: Size::from(*size), dr: *dr, ir: *ir })
         }
-        [0xe, count, dr, size, lr, _LSLRREG, register] => {
-            return Some(LSLRREG { register: *register, count: *count, size: Size::from(*size), dr: *dr, lr: *lr })
+        [0xe, count, dr, size, ir, _LSLRREG, register] => {
+            return Some(LSLRREG { register: *register, count: *count, size: Size::from(*size), dr: *dr, ir: *ir })
         }
-        [0xe, count, dr, size, lr, _ROXLR, register] => {
-            return Some(ROXLR { register: *register, count: *count, size: Size::from(*size), dr: *dr, lr: *lr })
+        [0xe, count, dr, size, ir, _ROXLR, register] => {
+            return Some(ROXLR { register: *register, count: *count, size: Size::from(*size), dr: *dr, ir: *ir })
         }
-        [0xe, count, dr, size, lr, _ROLR, register] => {
-            return Some(ROLR { register: *register, count: *count, size: Size::from(*size), dr: *dr, lr: *lr })
+        [0xe, count, dr, size, ir, _ROLR, register] => {
+            return Some(ROLR { register: *register, count: *count, size: Size::from(*size), dr: *dr, ir: *ir })
         }
         _ => {}
     }
@@ -384,10 +384,10 @@ pub fn parse_instruction(opcode: u16) -> Option<Instruction> {
         [_AND, register, opmode, mode, earegister] => {
             return Some(AND { register: *register, opmode: *opmode, mode: *mode, earegister: *earegister })
         }
-        [_CMP, register, opmode, mode, earegister] => {
+        [_CMP, register, opmode, mode, earegister] if opmode < &3 => {
             return Some(CMP { register: *register, opmode: *opmode, mode: *mode, earegister: *earegister })
         }
-        [_EOR, register, opmode, mode, earegister] => {
+        [_EOR, register, opmode, mode, earegister] if opmode > &3 => {
             return Some(EOR { register: *register, opmode: *opmode, mode: *mode, earegister: *earegister })
         }
         [_OR, register, opmode, mode, earegister] => {

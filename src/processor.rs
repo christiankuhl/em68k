@@ -249,7 +249,7 @@ pub fn set_bit(bitfield: &mut u32, bit: usize, value: bool) {
     }
 }
 
-pub fn get_bit(bitfield: u32, bit: usize) -> bool {
+pub fn get_bit(bitfield: usize, bit: usize) -> bool {
     bitfield & (1 << bit) != 0
 }
 

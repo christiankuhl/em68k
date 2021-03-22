@@ -34,9 +34,9 @@ pub enum Instruction {
     MOVETOSR { mode: usize, earegister: usize },
     PEA { mode: usize, earegister: usize },
     TAS { mode: usize, earegister: usize },
-    EXT { mode: usize, earegister: usize },
-    ASLRMEM { mode: usize, earegister: usize },
-    LSLRMEM { mode: usize, earegister: usize },
+    EXT { opmode: usize, register: usize },
+    ASLRMEM { dr: usize, mode: usize, earegister: usize },
+    LSLRMEM { dr: usize, mode: usize, earegister: usize },
     DBCC { condition: Condition, register: usize },
     MOVEM { size: Size, dr: usize, mode: usize, earegister: usize },
     ABCD { rx: usize, ry: usize, rm: usize },
@@ -69,10 +69,10 @@ pub enum Instruction {
     NBCD { register: usize, mode: usize, earegister: usize },
     MOVEP { dregister: usize, opmode: usize, aregister: usize },
     SCC { condition: Condition, mode: usize, earegister: usize },
-    ASLRREG { register: usize, count: usize, size: Size, dr: usize, lr: usize },
-    LSLRREG { register: usize, count: usize, size: Size, dr: usize, lr: usize },
-    ROXLR { register: usize, count: usize, size: Size, dr: usize, lr: usize },
-    ROLR { register: usize, count: usize, size: Size, dr: usize, lr: usize },
+    ASLRREG { register: usize, count: usize, size: Size, dr: usize, ir: usize },
+    LSLRREG { register: usize, count: usize, size: Size, dr: usize, ir: usize },
+    ROXLR { register: usize, count: usize, size: Size, dr: usize, ir: usize },
+    ROLR { register: usize, count: usize, size: Size, dr: usize, ir: usize },
     MOVEQ { register: usize, data: usize },
     EXG { mode: usize, rx: usize, ry: usize },
     CHK { register: usize, size: Size, mode: usize, earegister: usize },
@@ -299,12 +299,94 @@ impl Instruction {
                 ram_handle.write(OpResult::Long(cpu.pc + 2));
             }
             Self::TAS { mode, earegister } => {
-                
+                let handle = cpu.memory_handle(mode, earegister, Size::Byte);
+                let mut operand = (handle.read(1).inner() & 0xff) as u8;
+                let ccr = CCRFlags { x: None, 
+                    n: Some(operand & (1 << 7) != 0), 
+                    z: Some(operand == 0),
+                    v: Some(false),
+                    c: Some(false),
+                };
+                ccr.set(cpu);
+                operand |= 1 << 7;
+                handle.write(OpResult::Byte(operand));     
             }
-            Self::EXT { mode, earegister } => {}
-            Self::ASLRMEM { mode, earegister } => {}
-            Self::LSLRMEM { mode, earegister } => {}
-            Self::DBCC { condition, register } => {}
+            Self::EXT { opmode, register } => {
+                let mut ccr = CCRFlags { x: None, n: None, z: None, v: Some(false), c: Some(false) };
+                {
+                    let mut reg = cpu.dr[register].as_ref().borrow_mut();
+                    if opmode == 2 {
+                        let lower = (*reg & 0xff) as i8;
+                        *reg &= 0xffff0000;
+                        *reg += ((lower as u16) & 0xffff) as u32;
+                        ccr.z = Some(lower == 0);
+                        ccr.n = Some(lower < 0);
+                    } else {
+                        let lower = (*reg & 0xffff) as i16;
+                        *reg = lower as u32;
+                        ccr.z = Some(lower == 0);
+                        ccr.n = Some(lower < 0);
+                    }
+                }
+                ccr.set(cpu);
+            }
+            Self::ASLRMEM { dr, mode, earegister } => {
+                let handle = cpu.memory_handle(mode, earegister, Size::Word);
+                let mut ccr = CCRFlags::new();
+                let mut value = handle.read(2).inner() as i16;
+                let msb = get_bit(value as usize, 15);
+                if dr == 0 {
+                    let lsb = get_bit(value as usize, 0);
+                    value = value >> 1;
+                    ccr.c = Some(lsb);
+                    ccr.x = Some(lsb);
+                } else {
+                    value = value << 1;
+                    ccr.c = Some(msb);
+                    ccr.x = Some(msb);
+                }
+                handle.write(OpResult::Word(value as u16));
+                let new_msb = get_bit(value as usize, 15);
+                ccr.z = Some(value == 0);
+                ccr.n = Some(value < 0);
+                ccr.v = Some(new_msb != msb);
+                ccr.set(cpu);
+            }
+            Self::LSLRMEM { dr, mode, earegister } => {
+                let handle = cpu.memory_handle(mode, earegister, Size::Word);
+                let mut ccr = CCRFlags::new();
+                let mut value = handle.read(2).inner() as u16;
+                let msb;
+                if dr == 0 {
+                    let lsb = get_bit(value as usize, 0);
+                    value = value >> 1;
+                    ccr.c = Some(lsb);
+                    ccr.x = Some(lsb);
+                } else {
+                    msb = get_bit(value as usize, 15);
+                    value = value << 1;
+                    ccr.c = Some(msb);
+                    ccr.x = Some(msb);
+                }
+                handle.write(OpResult::Word(value as u16));
+                let new_msb = get_bit(value as usize, 15);
+                ccr.z = Some(value == 0);
+                ccr.n = Some((value as i16) < 0);
+                ccr.v = Some(false);
+                ccr.set(cpu);
+            }
+            Self::DBCC { condition, register } => {
+                let displacement = cpu.next_instruction() as i32;
+                let counter_reg = cpu.memory_handle(0, register, Size::Byte);
+                let mut counter = counter_reg.read(1).inner() as i8;
+                if !condition.evaluate(cpu) {
+                    counter -= 1;
+                    counter_reg.write(OpResult::Byte(counter as u8));
+                    if counter != -1 {
+                        cpu.pc = (cpu.pc as i32 + displacement - 2) as u32;
+                    }
+                } 
+            }
             Self::MOVEM { size, dr, mode, earegister } => {
                 // FIXME: Handle address register
                 let mut register_mask = cpu.next_instruction();
@@ -372,8 +454,22 @@ impl Instruction {
                 handle.write(result);
                 ccr.set(cpu);
             }
-            Self::ANDI { size, mode, earegister } => {}
-            Self::CLR { size, mode, earegister } => {}
+            Self::ANDI { size, mode, earegister } => {
+                let dest = cpu.memory_handle(mode, earegister, size);
+                let operand = dest.read(size as usize);
+                let src = cpu.immediate_operand(size);
+                let res = src.and(operand);
+                let ccr = res.1;
+                dest.write(res.0);
+                ccr.set(cpu);
+            }
+            Self::CLR { size, mode, earegister } => {
+                let dest = cpu.memory_handle(mode, earegister, size);
+                let res = dest.read(size as usize).clear();
+                let ccr = res.1;
+                dest.write(res.0);
+                ccr.set(cpu);
+            }
             Self::CMPI { size, mode, earegister } => {
                 let operand = cpu.memory_handle(mode, earegister, size).read(size as usize);
                 let src = cpu.immediate_operand(size);
@@ -381,11 +477,35 @@ impl Instruction {
                 let ccr = res.1;
                 ccr.set(cpu);
             }
-            Self::EORI { size, mode, earegister } => {}
-            Self::NEG { size, mode, earegister } => {}
+            Self::EORI { size, mode, earegister } => {
+                let dest = cpu.memory_handle(mode, earegister, size);
+                let operand = dest.read(size as usize);
+                let src = cpu.immediate_operand(size);
+                let res = src.xor(operand);
+                let ccr = res.1;
+                dest.write(res.0);
+                ccr.set(cpu);
+            }
+            Self::NEG { size, mode, earegister } => {
+                let handle = cpu.memory_handle(mode, earegister, size);
+                let operand = handle.read(size as usize);
+                let res = size.zero().sub(operand);
+                let result = res.0;
+                let ccr = res.1;
+                handle.write(result);
+                ccr.set(cpu);
+            }
             Self::NEGX { size, mode, earegister } => {}
             Self::NOT { size, mode, earegister } => {}
-            Self::ORI { size, mode, earegister } => {}
+            Self::ORI { size, mode, earegister } => {
+                let dest = cpu.memory_handle(mode, earegister, size);
+                let operand = dest.read(size as usize);
+                let src = cpu.immediate_operand(size);
+                let res = src.or(operand);
+                let ccr = res.1;
+                dest.write(res.0);
+                ccr.set(cpu);
+            }
             Self::SUBI { size, mode, earegister } => {
                 let handle = cpu.memory_handle(mode, earegister, size);
                 let operand = handle.read(size as usize);
@@ -396,7 +516,15 @@ impl Instruction {
                 handle.write(result);
                 ccr.set(cpu);
             }
-            Self::TST { size, mode, earegister } => {}
+            Self::TST { size, mode, earegister } => {
+                let operand = cpu.memory_handle(mode, earegister, size).read(size as usize).inner();
+                let mut ccr = CCRFlags::new();
+                ccr.n = Some((operand as i32) < 0);
+                ccr.z = Some(operand == 0);
+                ccr.v = Some(false);
+                ccr.c = Some(false);
+                ccr.set(cpu);
+            }
             Self::BRA { displacement } => {
                 cpu.pc = if displacement == 0 {
                     let displacement_i16 = cpu.next_instruction() as i16;
@@ -405,10 +533,69 @@ impl Instruction {
                     (cpu.pc as i32 + (displacement as i8 as i32) - 2) as u32 + 2
                 }
             }
-            Self::BSR { displacement } => {}
-            Self::CMPM { ax, ay, size } => {}
-            Self::ADDX { rx, ry, rm, size } => {}
-            Self::SUBX { rx, ry, rm, size } => {}
+            Self::BSR { displacement } => {
+                let pc = if displacement == 0 {
+                    let displacement_i16 = cpu.next_instruction() as i16;
+                    (cpu.pc as i32 + (displacement_i16 as i32) - 4) as u32 + 2
+                } else {
+                    (cpu.pc as i32 + (displacement as i8 as i32) - 2) as u32 + 2
+                };
+                let mut sp = cpu.ar[7].as_ref().borrow_mut();
+                *sp -= 4;
+                let ram_handle = MemoryHandle { reg: None, ptr: Some(*sp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                ram_handle.write(OpResult::Long(cpu.pc + 2));
+                cpu.pc = pc;
+            }
+            Self::CMPM { ax, ay, size } => {
+                let src = cpu.memory_handle(3, ay, size).read(size as usize);
+                let dest = cpu.memory_handle(3, ax, size);
+                let res = dest.read(size as usize).sub(src);
+                let ccr = res.1;
+                dest.write(res.0);
+                ccr.set(cpu);
+            }
+            Self::ADDX { rx, ry, rm, size } => {
+                let src;
+                let dest;
+                if rm == 0 {
+                    src = cpu.memory_handle(0, ry, size);
+                    dest = cpu.memory_handle(0, rx, size); 
+                } else {
+                    src = cpu.memory_handle(4, ry, size);
+                    dest = cpu.memory_handle(4, rx, size);
+                }
+                let x = cpu.ccr(CCR::X);
+                let operand = match src.read(size as usize) {
+                    OpResult::Byte(op) => OpResult::Byte((op.wrapping_add(x as u8) & 0xff) as u8),
+                    OpResult::Word(op) => OpResult::Word((op.wrapping_add(x as u16) & 0xffff) as u16),
+                    OpResult::Long(op) => OpResult::Long(op.wrapping_add(x as u32))
+                };
+                let res = dest.read(size as usize).add(operand);
+                let ccr = res.1;
+                dest.write(res.0);
+                ccr.set(cpu);
+            }
+            Self::SUBX { rx, ry, rm, size } => {
+                let src;
+                let dest;
+                if rm == 0 {
+                    src = cpu.memory_handle(0, ry, size);
+                    dest = cpu.memory_handle(0, rx, size); 
+                } else {
+                    src = cpu.memory_handle(4, ry, size);
+                    dest = cpu.memory_handle(4, rx, size);
+                }
+                let x = cpu.ccr(CCR::X);
+                let operand = match src.read(size as usize) {
+                    OpResult::Byte(op) => OpResult::Byte((op.wrapping_sub(x as u8) & 0xff) as u8),
+                    OpResult::Word(op) => OpResult::Word((op.wrapping_sub(x as u16) & 0xffff) as u16),
+                    OpResult::Long(op) => OpResult::Long(op.wrapping_sub(x as u32))
+                };
+                let res = dest.read(size as usize).sub(operand);
+                let ccr = res.1;
+                dest.write(res.0);
+                ccr.set(cpu);
+            }
             Self::BCHG { register, mode, earegister } => {
                 change_bit(mode, earegister, Some(register), cpu, Mode::Flip);
             }
@@ -423,7 +610,11 @@ impl Instruction {
             }
             Self::DIVS { register, mode, earegister } => {}
             Self::DIVU { register, mode, earegister } => {}
-            Self::LEA { register, mode, earegister } => {}
+            Self::LEA { register, mode, earegister } => {
+                let addr = cpu.memory_handle(mode, earegister, Size::Long).read(4).inner();
+                let mut addrreg = cpu.ar[register].as_ref().borrow_mut();
+                *addrreg = addr;
+            }
             Self::MULS { register, mode, earegister } => {}
             Self::MULU { register, mode, earegister } => {}
             Self::NBCD { register, mode, earegister } => {}
@@ -455,11 +646,108 @@ impl Instruction {
                     }
                 }
             }
-            Self::SCC { condition, mode, earegister } => {}
-            Self::ASLRREG { register, count, size, dr, lr } => {}
-            Self::LSLRREG { register, count, size, dr, lr } => {}
-            Self::ROXLR { register, count, size, dr, lr } => {}
-            Self::ROLR { register, count, size, dr, lr } => {}
+            Self::SCC { condition, mode, earegister } => {
+                let dest = cpu.memory_handle(mode, earegister, Size::Byte);
+                if condition.evaluate(cpu) {
+                    dest.write(OpResult::Byte(0xff));
+                } else {
+                    dest.write(OpResult::Byte(0));
+                }
+            }
+            Self::ASLRREG { register, count, size, dr, ir } => {
+                let shift_count = if ir == 0 {
+                    ((count - 1) % 8) + 1
+                } else {
+                    (*cpu.dr[count].as_ref().borrow() % 64) as usize
+                };
+                let bitsize = 8 * size as usize;
+                let handle = cpu.memory_handle(0, register, size);
+                let mut ccr = CCRFlags::new();
+                let mut value = handle.read(size as usize).inner() as i32;
+                let msb = get_bit(value as usize, bitsize - 1);
+                let mut new_msb;
+                let mut lsb;
+                let mut msb_changed = false;
+                if dr == 0 {
+                    for _ in 0..shift_count {
+                        new_msb = get_bit(value as usize, bitsize - 1);
+                        lsb = get_bit(value as usize, 0);
+                        value = value >> 1;
+                        ccr.c = Some(lsb);
+                        ccr.x = Some(lsb);
+                        if new_msb != msb {
+                            msb_changed = true;
+                        }
+                    }
+                } else {
+                    for _ in 0..shift_count {
+                        new_msb = get_bit(value as usize, bitsize - 1);
+                        value = value << 1;
+                        ccr.c = Some(new_msb);
+                        ccr.x = Some(new_msb);
+                        if new_msb != msb {
+                            msb_changed = true;
+                        }
+                    }
+                }
+                match size {
+                    Size::Byte => handle.write(OpResult::Word((value & 0xff) as u16)),
+                    Size::Word => handle.write(OpResult::Word((value & 0xffff) as u16)),
+                    Size::Long => handle.write(OpResult::Long(value as u32))
+                }
+                ccr.z = Some(value == 0);
+                ccr.n = Some(value < 0);
+                ccr.v = Some(msb_changed);
+                ccr.set(cpu);
+            }
+            Self::LSLRREG { register, count, size, dr, ir } => {
+                let shift_count = if ir == 0 {
+                    ((count - 1) % 8) + 1
+                } else {
+                    (*cpu.dr[count].as_ref().borrow() % 64) as usize
+                };
+                let bitsize = 8 * size as usize;
+                let handle = cpu.memory_handle(0, register, size);
+                let mut ccr = CCRFlags::new();
+                let mut value = handle.read(size as usize).inner() as u32;
+                let msb = get_bit(value as usize, bitsize - 1);
+                let mut new_msb;
+                let mut lsb;
+                let mut msb_changed = false;
+                if dr == 0 {
+                    for _ in 0..shift_count {
+                        new_msb = get_bit(value as usize, bitsize - 1);
+                        lsb = get_bit(value as usize, 0);
+                        value = value >> 1;
+                        ccr.c = Some(lsb);
+                        ccr.x = Some(lsb);
+                        if new_msb != msb {
+                            msb_changed = true;
+                        }
+                    }
+                } else {
+                    for _ in 0..shift_count {
+                        new_msb = get_bit(value as usize, bitsize - 1);
+                        value = value << 1;
+                        ccr.c = Some(new_msb);
+                        ccr.x = Some(new_msb);
+                        if new_msb != msb {
+                            msb_changed = true;
+                        }
+                    }
+                }
+                match size {
+                    Size::Byte => handle.write(OpResult::Word((value & 0xff) as u16)),
+                    Size::Word => handle.write(OpResult::Word((value & 0xffff) as u16)),
+                    Size::Long => handle.write(OpResult::Long(value))
+                }
+                ccr.z = Some(value == 0);
+                ccr.n = Some(msb);
+                ccr.v = Some(msb_changed);
+                ccr.set(cpu);
+            }
+            Self::ROXLR { register, count, size, dr, ir } => {}
+            Self::ROLR { register, count, size, dr, ir } => {}
             Self::MOVEQ { register, data } => {
                 cpu.dr[register].as_ref().replace((data & 0xff) as i8 as u32);
             }
@@ -570,9 +858,9 @@ impl Instruction {
             Self::MOVETOSR { mode, earegister } => format!("move {:},ccr", addr_as_asm(mode, earegister, Size::Byte, cpu)),
             Self::PEA { mode, earegister } => format!("pea {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
             Self::TAS { mode, earegister } => format!("tas {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::EXT { mode, earegister } => format!("ext {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::ASLRMEM { mode, earegister } => String::from("aslrmem"),
-            Self::LSLRMEM { mode, earegister } => String::from("lslrmem"),
+            Self::EXT { opmode, register } => format!("ext.{:} d{:}", if opmode == 2 { "w" } else { "l" }, register),
+            Self::ASLRMEM { dr, mode, earegister } => format!("as{:} {:}", if dr == 0 { "r" } else { "l" }, addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::LSLRMEM { dr, mode, earegister } => format!("ls{:} {:}", if dr == 0 { "r" } else { "l" }, addr_as_asm(mode, earegister, Size::Byte, cpu)),
             Self::DBCC { condition, register } => String::from("dbcc"),
             Self::MOVEM { size, dr, mode, earegister } => {
                 // // FIXME: Handle address register
@@ -676,10 +964,10 @@ impl Instruction {
                 }
             }
             Self::SCC { condition, mode, earegister } => String::from("scc"),
-            Self::ASLRREG { register, count, size, dr, lr } => String::from("aslrreg"),
-            Self::LSLRREG { register, count, size, dr, lr } => String::from("lslrreg"),
-            Self::ROXLR { register, count, size, dr, lr } => String::from("roxlr"),
-            Self::ROLR { register, count, size, dr, lr } => String::from("rolr"),
+            Self::ASLRREG { register, count, size, dr, ir } => String::from("aslrreg"),
+            Self::LSLRREG { register, count, size, dr, ir } => String::from("lslrreg"),
+            Self::ROXLR { register, count, size, dr, ir } => String::from("roxlr"),
+            Self::ROLR { register, count, size, dr, ir } => String::from("rolr"),
             Self::MOVEQ { register, data } => format!("moveq #${:02x},d{:}", data, register),
             Self::EXG { mode, rx, ry } => String::from("exg"),
             Self::CHK { register, size, mode, earegister } => String::from("chk"),
@@ -917,7 +1205,7 @@ fn change_bit(mode: usize, earegister: usize, register: Option<usize>, cpu: &mut
         size = 1;
     }
     let mut bitfield = handle.read(size).inner();
-    let mut value = get_bit(bitfield, bitnumber);
+    let mut value = get_bit(bitfield as usize, bitnumber);
     let mut ccr = CCRFlags::new();
     ccr.z = Some(!value);
     ccr.set(cpu);

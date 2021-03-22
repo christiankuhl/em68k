@@ -22,6 +22,16 @@ pub enum Size {
 }
 
 impl Size {
+    pub fn zero(&self) -> OpResult {
+        match *self {
+            Self::Byte => OpResult::Byte(0),
+            Self::Word => OpResult::Word(0),
+            Self::Long => OpResult::Long(0),
+        }
+    }
+}
+
+impl Size {
     pub fn from(size: usize) -> Self {
         match size {
             0 => Self::Byte,
@@ -82,6 +92,35 @@ impl OpResult {
             Self::Byte(_) => (Self::Byte((res.0 & 0xff) as u8), ccr),
             Self::Word(_) => (Self::Word((res.0 & 0xffff) as u16), ccr),
             Self::Long(_) => (Self::Long(res.0 as u32), ccr)
+        }
+    }
+    pub fn and(&self, other: Self) -> (Self, CCRFlags) {
+        self.bitwise_op(other, |a:u32, b:u32| a & b)
+    }
+    pub fn or(&self, other: Self) -> (Self, CCRFlags) {
+        self.bitwise_op(other, |a:u32, b:u32| a | b)
+    }
+    pub fn xor(&self, other: Self) -> (Self, CCRFlags) {
+        self.bitwise_op(other, |a:u32, b:u32| a ^ b)
+    }
+    pub fn clear(&self) -> (Self, CCRFlags) {
+        self.bitwise_op(*self, |a:u32, b:u32| a ^ b)
+    }
+    fn bitwise_op<T>(&self, other: Self, fun: T) -> (Self, CCRFlags)
+        where T: Fn(u32, u32)->u32
+    {
+        let mut ccr = CCRFlags::new();
+        let src = self.inner();
+        let dest = other.inner();
+        let res = fun(src, dest);
+        ccr.n = Some((res as i32) < 0);
+        ccr.z = Some(res == 0);
+        ccr.v = Some(false);
+        ccr.c = Some(false);
+        match *self {
+            Self::Byte(_) => (Self::Byte((res & 0xff) as u8), ccr),
+            Self::Word(_) => (Self::Word((res & 0xffff) as u16), ccr),
+            Self::Long(_) => (Self::Long(res as u32), ccr)
         }
     }
 }
