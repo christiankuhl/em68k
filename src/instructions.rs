@@ -267,8 +267,17 @@ impl Instruction {
             Self::BTSTS { mode, earegister } => {
                 change_bit(mode, earegister, None, cpu, Mode::None);
             }
-            Self::JMP { mode, earegister } => {}
-            Self::JSR { mode, earegister } => {}
+            Self::JMP { mode, earegister } => {
+                let addr = cpu.memory_address(mode, earegister);
+                cpu.pc = addr - 2;
+            }
+            Self::JSR { mode, earegister } => {
+                cpu.pc = cpu.memory_address(mode, earegister) - 2;
+                let mut sp = cpu.ar[7].as_ref().borrow_mut();
+                *sp -= 4;
+                let ram_handle = MemoryHandle { reg: None, ptr: Some(*sp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                ram_handle.write(OpResult::Long(cpu.pc + 2));
+            }
             Self::MOVECCR { mode, earegister } => {
                 let src = cpu.memory_handle(mode, earegister, Size::Word).read(2).inner();
                 cpu.sr &= 0xff00;
@@ -282,8 +291,16 @@ impl Instruction {
                 let src = cpu.memory_handle(mode, earegister, Size::Word).read(2).inner();
                 cpu.sr = src & 0x8e0;
             }
-            Self::PEA { mode, earegister } => {}
-            Self::TAS { mode, earegister } => {}
+            Self::PEA { mode, earegister } => {
+                let addr = cpu.memory_address(mode, earegister);
+                let mut sp = cpu.ar[7].as_ref().borrow_mut();
+                *sp -= 4;
+                let ram_handle = MemoryHandle { reg: None, ptr: Some(*sp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                ram_handle.write(OpResult::Long(cpu.pc + 2));
+            }
+            Self::TAS { mode, earegister } => {
+                
+            }
             Self::EXT { mode, earegister } => {}
             Self::ASLRMEM { mode, earegister } => {}
             Self::LSLRMEM { mode, earegister } => {}

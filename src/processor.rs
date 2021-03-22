@@ -210,6 +210,13 @@ impl CPU {
             }
         }
     }
+    pub fn memory_address(&mut self, mode: usize, earegister: usize) -> u32 {
+        if let Some(ptr) = self.memory_handle(mode, earegister, Size::Byte).ptr {
+            (ptr & 0xffffffff) as u32
+        } else {
+            panic!("Invalid addressing mode!")
+        }
+    }
 }
 
 impl fmt::Debug for CPU {
