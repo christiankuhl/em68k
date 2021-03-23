@@ -10,6 +10,7 @@ mod parser;
 mod instructions;
 use processor::CPU;
 use memory::{RamPtr, RAM_SIZE};
+mod fields;
 
 pub struct Emulator {
     cpu: CPU,    // CPU

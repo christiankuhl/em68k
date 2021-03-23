@@ -1,7 +1,6 @@
-use std::rc::Rc;
 use crate::processor::{CPU, CCR, CCRFlags, set_bit, get_bit};
-use crate::memory::{OpResult, MemoryHandle, Size};
-use crate::parser::parse_extension_word;
+use crate::memory::{OpResult, MemoryHandle};
+use crate::fields::{EAMode, BitMode, Size, Condition};
 
 pub enum Instruction {
     ANDICCR,
@@ -23,70 +22,70 @@ pub enum Instruction {
     UNLK { register: usize },
     TRAP { vector: usize },
     MOVEUSP { register: usize, dr: usize },
-    BCHGS { mode: usize, earegister: usize },
-    BCLRS { mode: usize, earegister: usize },
-    BSETS { mode: usize, earegister: usize },
-    BTSTS { mode: usize, earegister: usize },
-    JMP { mode: usize, earegister: usize },
-    JSR { mode: usize, earegister: usize },
-    MOVECCR { mode: usize, earegister: usize },
-    MOVEFROMSR { mode: usize, earegister: usize },
-    MOVETOSR { mode: usize, earegister: usize },
-    PEA { mode: usize, earegister: usize },
-    TAS { mode: usize, earegister: usize },
+    BCHGS { mode: EAMode, earegister: usize },
+    BCLRS { mode: EAMode, earegister: usize },
+    BSETS { mode: EAMode, earegister: usize },
+    BTSTS { mode: EAMode, earegister: usize },
+    JMP { mode: EAMode },
+    JSR { mode: EAMode },
+    MOVECCR { mode: EAMode },
+    MOVEFROMSR { mode: EAMode },
+    MOVETOSR { mode: EAMode },
+    PEA { mode: EAMode, earegister: usize },
+    TAS { mode: EAMode, earegister: usize },
     EXT { opmode: usize, register: usize },
-    ASLRMEM { dr: usize, mode: usize, earegister: usize },
-    LSLRMEM { dr: usize, mode: usize, earegister: usize },
+    ASLRMEM { dr: usize, mode: EAMode, earegister: usize },
+    LSLRMEM { dr: usize, mode: EAMode, earegister: usize },
     DBCC { condition: Condition, register: usize },
-    MOVEM { size: Size, dr: usize, mode: usize, earegister: usize },
+    MOVEM { size: Size, dr: usize, mode: EAMode, earegister: usize },
     ABCD { rx: usize, ry: usize, rm: usize },
     SBCD { rx: usize, ry: usize, rm: usize },
-    ADDI { size: Size, mode: usize, earegister: usize },
-    ANDI { size: Size, mode: usize, earegister: usize },
-    CLR { size: Size, mode: usize, earegister: usize },
-    CMPI { size: Size, mode: usize, earegister: usize },
-    EORI { size: Size, mode: usize, earegister: usize },
-    NEG { size: Size, mode: usize, earegister: usize },
-    NEGX { size: Size, mode: usize, earegister: usize },
-    NOT { size: Size, mode: usize, earegister: usize },
-    ORI { size: Size, mode: usize, earegister: usize },
-    SUBI { size: Size, mode: usize, earegister: usize },
-    TST { size: Size, mode: usize, earegister: usize },
+    ADDI { size: Size, mode: EAMode, earegister: usize },
+    ANDI { size: Size, mode: EAMode, earegister: usize },
+    CLR { size: Size, mode: EAMode, earegister: usize },
+    CMPI { size: Size, mode: EAMode, earegister: usize },
+    EORI { size: Size, mode: EAMode, earegister: usize },
+    NEG { size: Size, mode: EAMode, earegister: usize },
+    NEGX { size: Size, mode: EAMode, earegister: usize },
+    NOT { size: Size, mode: EAMode, earegister: usize },
+    ORI { size: Size, mode: EAMode, earegister: usize },
+    SUBI { size: Size, mode: EAMode, earegister: usize },
+    TST { size: Size, mode: EAMode, earegister: usize },
     BRA { displacement: usize },
     BSR { displacement: usize },
     CMPM { ax: usize, ay: usize, size: Size },
     ADDX { rx: usize, ry: usize, rm: usize, size: Size },
     SUBX { rx: usize, ry: usize, rm: usize, size: Size },
-    BCHG { register: usize, mode: usize, earegister: usize },
-    BCLR { register: usize, mode: usize, earegister: usize },
-    BSET { register: usize, mode: usize, earegister: usize },
-    BTST { register: usize, mode: usize, earegister: usize },
-    DIVS { register: usize, mode: usize, earegister: usize },
-    DIVU { register: usize, mode: usize, earegister: usize },
-    LEA { register: usize, mode: usize, earegister: usize },
-    MULS { register: usize, mode: usize, earegister: usize },
-    MULU { register: usize, mode: usize, earegister: usize },
-    NBCD { register: usize, mode: usize, earegister: usize },
+    BCHG { register: usize, mode: EAMode, earegister: usize },
+    BCLR { register: usize, mode: EAMode, earegister: usize },
+    BSET { register: usize, mode: EAMode, earegister: usize },
+    BTST { register: usize, mode: EAMode, earegister: usize },
+    DIVS { register: usize, mode: EAMode, earegister: usize },
+    DIVU { register: usize, mode: EAMode, earegister: usize },
+    LEA { register: usize, mode: EAMode, earegister: usize },
+    MULS { register: usize, mode: EAMode, earegister: usize },
+    MULU { register: usize, mode: EAMode, earegister: usize },
+    NBCD { register: usize, mode: EAMode, earegister: usize },
     MOVEP { dregister: usize, opmode: usize, aregister: usize },
-    SCC { condition: Condition, mode: usize, earegister: usize },
+    SCC { condition: Condition, mode: EAMode, earegister: usize },
     ASLRREG { register: usize, count: usize, size: Size, dr: usize, ir: usize },
     LSLRREG { register: usize, count: usize, size: Size, dr: usize, ir: usize },
     ROXLR { register: usize, count: usize, size: Size, dr: usize, ir: usize },
     ROLR { register: usize, count: usize, size: Size, dr: usize, ir: usize },
     MOVEQ { register: usize, data: usize },
     EXG { mode: usize, rx: usize, ry: usize },
-    CHK { register: usize, size: Size, mode: usize, earegister: usize },
-    MOVEA { register: usize, size: Size, mode: usize, earegister: usize },
-    ADDQ { data: usize, size: Size, mode: usize, earegister: usize },
-    SUBQ { data: usize, size: Size, mode: usize, earegister: usize },
+    CHK { register: usize, size: Size, mode: EAMode, earegister: usize },
+    MOVEA { register: usize, size: Size, mode: EAMode, earegister: usize },
+    ADDQ { data: usize, size: Size, mode: EAMode, earegister: usize },
+    SUBQ { data: usize, size: Size, mode: EAMode, earegister: usize },
     BCC { condition: Condition, displacement: usize },
-    ADD { register: usize, opmode: usize, mode: usize, earegister: usize },
-    AND { register: usize, opmode: usize, mode: usize, earegister: usize },
-    CMP { register: usize, opmode: usize, mode: usize, earegister: usize },
-    EOR { register: usize, opmode: usize, mode: usize, earegister: usize },
-    OR { register: usize, opmode: usize, mode: usize, earegister: usize },
-    SUB { register: usize, opmode: usize, mode: usize, earegister: usize },
-    MOVE { size: Size, destreg: usize, destmode: usize, srcmode: usize, srcreg: usize },
+    ADD { register: usize, opmode: usize, mode: EAMode, earegister: usize },
+    AND { register: usize, opmode: usize, mode: EAMode, earegister: usize },
+    CMP { register: usize, opmode: usize, mode: EAMode, earegister: usize },
+    EOR { register: usize, opmode: usize, mode: EAMode, earegister: usize },
+    OR { register: usize, opmode: usize, mode: EAMode, earegister: usize },
+    SUB { register: usize, opmode: usize, mode: EAMode, earegister: usize },
+    MOVE { size: Size, destreg: usize, destmode: EAMode, srcmode: EAMode, srcreg: usize },
 }
 
 pub enum ExtensionWord {
@@ -154,10 +153,10 @@ impl Instruction {
                     privilege_violation(cpu);
                 } else {
                     let mut ssp = cpu.ssp.as_ref().borrow_mut();
-                    let mut ram_handle = MemoryHandle { reg: None, ptr: Some(*ssp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                    let mut ram_handle = MemoryHandle::new(None, Some(*ssp as usize), None, cpu);
                     cpu.sr = ram_handle.read(2).inner();
                     *ssp += 2;
-                    ram_handle = MemoryHandle { reg: None, ptr: Some(*ssp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                    ram_handle.offset(2);
                     cpu.pc = ram_handle.read(4).inner();
                     *ssp += 4;
                     // FIXME: Do the actual restore
@@ -165,18 +164,18 @@ impl Instruction {
             }
             Self::RTR => {
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
-                let mut ram_handle = MemoryHandle { reg: None, ptr: Some(*sp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                let mut ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 let ccr = ram_handle.read(2).inner() as u16 & 0x00ff;
                 cpu.sr &= 0xff00;
                 cpu.sr |= ccr as u32;
                 *sp += 2;
-                ram_handle = MemoryHandle { reg: None, ptr: Some(*sp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 cpu.pc = ram_handle.read(4).inner();
                 *sp += 4;
             }
             Self::RTS => {
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
-                let ram_handle = MemoryHandle { reg: None, ptr: Some(*sp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 cpu.pc = ram_handle.read(4).inner();
                 *sp += 4;
             }
@@ -200,7 +199,7 @@ impl Instruction {
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
                 *sp -= 4;
                 let mut ar = cpu.ar[register].as_ref().borrow_mut();
-                let ram_handle = MemoryHandle { reg: None, ptr: Some(*sp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(*ar));
                 *ar = *sp;
                 *sp = (*sp as i32 + displacement as i32) as u32;
@@ -225,7 +224,7 @@ impl Instruction {
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
                 let mut ar = cpu.ar[register].as_ref().borrow_mut();
                 *sp = *ar;
-                let ram_handle = MemoryHandle { reg: None, ptr: Some(*sp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 *ar = ram_handle.read(4).inner();
                 *sp += 4;
             }
@@ -233,10 +232,10 @@ impl Instruction {
                 cpu.supervisor_mode(true);
                 let mut ssp = cpu.ssp.as_ref().borrow_mut();
                 *ssp -= 4;
-                let mut ram_handle = MemoryHandle { reg: None, ptr: Some(*ssp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                let mut ram_handle = MemoryHandle::new(None, Some(*ssp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(cpu.pc));
                 *ssp -= 2;
-                ram_handle = MemoryHandle { reg: None, ptr: Some(*ssp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                ram_handle = MemoryHandle ::new(None, Some(*ssp as usize), None, cpu);
                 ram_handle.write(OpResult::Word((cpu.sr & 0xffff) as u16));
                 cpu.pc = (4 * vector + 0x7E) as u32;
             }
@@ -256,50 +255,50 @@ impl Instruction {
                 }
             }
             Self::BCHGS { mode, earegister } => {
-                change_bit(mode, earegister, None, cpu, Mode::Flip);
+                change_bit(mode, None, cpu, BitMode::Flip);
             }
             Self::BCLRS { mode, earegister } => {
-                change_bit(mode, earegister, None, cpu, Mode::Clear);
+                change_bit(mode, None, cpu, BitMode::Clear);
             }
             Self::BSETS { mode, earegister } => {
-                change_bit(mode, earegister, None, cpu, Mode::Set);
+                change_bit(mode, None, cpu, BitMode::Set);
             }
             Self::BTSTS { mode, earegister } => {
-                change_bit(mode, earegister, None, cpu, Mode::None);
+                change_bit(mode, None, cpu, BitMode::None);
             }
-            Self::JMP { mode, earegister } => {
-                let addr = cpu.memory_address(mode, earegister);
+            Self::JMP { mode } => {
+                let addr = cpu.memory_address(mode);
                 cpu.pc = addr - 2;
             }
-            Self::JSR { mode, earegister } => {
-                cpu.pc = cpu.memory_address(mode, earegister) - 2;
+            Self::JSR { mode } => {
+                cpu.pc = cpu.memory_address(mode) - 2;
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
                 *sp -= 4;
-                let ram_handle = MemoryHandle { reg: None, ptr: Some(*sp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(cpu.pc + 2));
             }
-            Self::MOVECCR { mode, earegister } => {
-                let src = cpu.memory_handle(mode, earegister, Size::Word).read(2).inner();
+            Self::MOVECCR { mode } => {
+                let src = cpu.memory_handle(mode).read(2).inner();
                 cpu.sr &= 0xff00;
                 cpu.sr |= src;
             }
-            Self::MOVEFROMSR { mode, earegister } => {
-                let dest = cpu.memory_handle(mode, earegister, Size::Word);
+            Self::MOVEFROMSR { mode } => {
+                let dest = cpu.memory_handle(mode);
                 dest.write(OpResult::Word((cpu.sr & 0x8e0) as u16));
             }
-            Self::MOVETOSR { mode, earegister } => {
-                let src = cpu.memory_handle(mode, earegister, Size::Word).read(2).inner();
+            Self::MOVETOSR { mode } => {
+                let src = cpu.memory_handle(mode).read(2).inner();
                 cpu.sr = src & 0x8e0;
             }
             Self::PEA { mode, earegister } => {
-                let addr = cpu.memory_address(mode, earegister);
+                let addr = cpu.memory_address(mode);
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
                 *sp -= 4;
-                let ram_handle = MemoryHandle { reg: None, ptr: Some(*sp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(cpu.pc + 2));
             }
             Self::TAS { mode, earegister } => {
-                let handle = cpu.memory_handle(mode, earegister, Size::Byte);
+                let handle = cpu.memory_handle(mode);
                 let mut operand = (handle.read(1).inner() & 0xff) as u8;
                 let ccr = CCRFlags { x: None, 
                     n: Some(operand & (1 << 7) != 0), 
@@ -331,7 +330,7 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::ASLRMEM { dr, mode, earegister } => {
-                let handle = cpu.memory_handle(mode, earegister, Size::Word);
+                let handle = cpu.memory_handle(mode);
                 let mut ccr = CCRFlags::new();
                 let mut value = handle.read(2).inner() as i16;
                 let msb = get_bit(value as usize, 15);
@@ -353,7 +352,7 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::LSLRMEM { dr, mode, earegister } => {
-                let handle = cpu.memory_handle(mode, earegister, Size::Word);
+                let handle = cpu.memory_handle(mode);
                 let mut ccr = CCRFlags::new();
                 let mut value = handle.read(2).inner() as u16;
                 let msb;
@@ -377,7 +376,7 @@ impl Instruction {
             }
             Self::DBCC { condition, register } => {
                 let displacement = cpu.next_instruction() as i32;
-                let counter_reg = cpu.memory_handle(0, register, Size::Byte);
+                let counter_reg = cpu.memory_handle(EAMode::DataDirect(register));
                 let mut counter = counter_reg.read(1).inner() as i8;
                 if !condition.evaluate(cpu) {
                     counter -= 1;
@@ -392,10 +391,10 @@ impl Instruction {
                 let mut register_mask = cpu.next_instruction();
                 let oplength = size as usize;
                 if dr == 0 {
-                    let mut tgt = cpu.memory_handle(mode, earegister, size);
+                    let mut tgt = cpu.memory_handle(mode);
                     let mut result;
                     // In Control and postincrement mode the mask order is A7..D0 (LSB first), reversed for predecrement
-                    if mode == 4 {
+                    if mode == EAMode::AddressPredecr(0, Size::Byte) {
                         register_mask = register_mask.reverse_bits();
                         tgt.offset(-(oplength as isize));
                     }
@@ -413,7 +412,7 @@ impl Instruction {
                                 result = OpResult::Long(*register);
                             }
                             tgt.write(result);
-                            if mode == 4 {
+                            if mode == EAMode::AddressPredecr(0, Size::Byte) {
                                 tgt.offset(-(oplength as isize));
                             } else {
                                 tgt.offset(oplength as isize);
@@ -421,7 +420,7 @@ impl Instruction {
                         }
                     }
                 } else if dr == 1 {
-                    let mut src = cpu.memory_handle(mode, earegister, size);
+                    let mut src = cpu.memory_handle(mode);
                     let mut result;
                     for j in 0..16 {
                         if register_mask & (1 << j) != 0 {
@@ -445,7 +444,7 @@ impl Instruction {
             Self::ABCD { rx, ry, rm } => {}
             Self::SBCD { rx, ry, rm } => {}
             Self::ADDI { size, mode, earegister } => {
-                let handle = cpu.memory_handle(mode, earegister, size);
+                let handle = cpu.memory_handle(mode);
                 let operand = handle.read(size as usize);
                 let summand = cpu.immediate_operand(size);
                 let res = operand.add(summand);
@@ -455,7 +454,7 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::ANDI { size, mode, earegister } => {
-                let dest = cpu.memory_handle(mode, earegister, size);
+                let dest = cpu.memory_handle(mode);
                 let operand = dest.read(size as usize);
                 let src = cpu.immediate_operand(size);
                 let res = src.and(operand);
@@ -464,21 +463,21 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::CLR { size, mode, earegister } => {
-                let dest = cpu.memory_handle(mode, earegister, size);
+                let dest = cpu.memory_handle(mode);
                 let res = dest.read(size as usize).clear();
                 let ccr = res.1;
                 dest.write(res.0);
                 ccr.set(cpu);
             }
             Self::CMPI { size, mode, earegister } => {
-                let operand = cpu.memory_handle(mode, earegister, size).read(size as usize);
+                let operand = cpu.memory_handle(mode).read(size as usize);
                 let src = cpu.immediate_operand(size);
                 let res = operand.sub(src);
                 let ccr = res.1;
                 ccr.set(cpu);
             }
             Self::EORI { size, mode, earegister } => {
-                let dest = cpu.memory_handle(mode, earegister, size);
+                let dest = cpu.memory_handle(mode);
                 let operand = dest.read(size as usize);
                 let src = cpu.immediate_operand(size);
                 let res = src.xor(operand);
@@ -487,7 +486,7 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::NEG { size, mode, earegister } => {
-                let handle = cpu.memory_handle(mode, earegister, size);
+                let handle = cpu.memory_handle(mode);
                 let operand = handle.read(size as usize);
                 let res = size.zero().sub(operand);
                 let result = res.0;
@@ -498,7 +497,7 @@ impl Instruction {
             Self::NEGX { size, mode, earegister } => {}
             Self::NOT { size, mode, earegister } => {}
             Self::ORI { size, mode, earegister } => {
-                let dest = cpu.memory_handle(mode, earegister, size);
+                let dest = cpu.memory_handle(mode);
                 let operand = dest.read(size as usize);
                 let src = cpu.immediate_operand(size);
                 let res = src.or(operand);
@@ -507,7 +506,7 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::SUBI { size, mode, earegister } => {
-                let handle = cpu.memory_handle(mode, earegister, size);
+                let handle = cpu.memory_handle(mode);
                 let operand = handle.read(size as usize);
                 let subtrahend = cpu.immediate_operand(size);
                 let res = operand.sub(subtrahend);
@@ -517,7 +516,7 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::TST { size, mode, earegister } => {
-                let operand = cpu.memory_handle(mode, earegister, size).read(size as usize).inner();
+                let operand = cpu.memory_handle(mode).read(size as usize).inner();
                 let mut ccr = CCRFlags::new();
                 ccr.n = Some((operand as i32) < 0);
                 ccr.z = Some(operand == 0);
@@ -542,13 +541,13 @@ impl Instruction {
                 };
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
                 *sp -= 4;
-                let ram_handle = MemoryHandle { reg: None, ptr: Some(*sp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+                let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(cpu.pc + 2));
                 cpu.pc = pc;
             }
             Self::CMPM { ax, ay, size } => {
-                let src = cpu.memory_handle(3, ay, size).read(size as usize);
-                let dest = cpu.memory_handle(3, ax, size);
+                let src = cpu.memory_handle(EAMode::AddressPostincr(ay, size)).read(size as usize);
+                let dest = cpu.memory_handle(EAMode::AddressPostincr(ax, size));
                 let res = dest.read(size as usize).sub(src);
                 let ccr = res.1;
                 dest.write(res.0);
@@ -558,11 +557,11 @@ impl Instruction {
                 let src;
                 let dest;
                 if rm == 0 {
-                    src = cpu.memory_handle(0, ry, size);
-                    dest = cpu.memory_handle(0, rx, size); 
+                    src = cpu.memory_handle(EAMode::DataDirect(ry));
+                    dest = cpu.memory_handle(EAMode::DataDirect(rx)); 
                 } else {
-                    src = cpu.memory_handle(4, ry, size);
-                    dest = cpu.memory_handle(4, rx, size);
+                    src = cpu.memory_handle(EAMode::AddressPredecr(ry, size));
+                    dest = cpu.memory_handle(EAMode::AddressPredecr(rx, size));
                 }
                 let x = cpu.ccr(CCR::X);
                 let operand = match src.read(size as usize) {
@@ -579,11 +578,11 @@ impl Instruction {
                 let src;
                 let dest;
                 if rm == 0 {
-                    src = cpu.memory_handle(0, ry, size);
-                    dest = cpu.memory_handle(0, rx, size); 
+                    src = cpu.memory_handle(EAMode::DataDirect(ry));
+                    dest = cpu.memory_handle(EAMode::DataDirect(rx)); 
                 } else {
-                    src = cpu.memory_handle(4, ry, size);
-                    dest = cpu.memory_handle(4, rx, size);
+                    src = cpu.memory_handle(EAMode::AddressPredecr(ry, size));
+                    dest = cpu.memory_handle(EAMode::AddressPredecr(rx, size));
                 }
                 let x = cpu.ccr(CCR::X);
                 let operand = match src.read(size as usize) {
@@ -597,21 +596,21 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::BCHG { register, mode, earegister } => {
-                change_bit(mode, earegister, Some(register), cpu, Mode::Flip);
+                change_bit(mode, Some(register), cpu, BitMode::Flip);
             }
             Self::BCLR { register, mode, earegister } => {
-                change_bit(mode, earegister, Some(register), cpu, Mode::Clear);
+                change_bit(mode, Some(register), cpu, BitMode::Clear);
             }
             Self::BSET { register, mode, earegister } => {
-                change_bit(mode, earegister, Some(register), cpu, Mode::Set);
+                change_bit(mode, Some(register), cpu, BitMode::Set);
             }
             Self::BTST { register, mode, earegister } => {
-                change_bit(mode, earegister, Some(register), cpu, Mode::None);
+                change_bit(mode, Some(register), cpu, BitMode::None);
             }
             Self::DIVS { register, mode, earegister } => {}
             Self::DIVU { register, mode, earegister } => {}
             Self::LEA { register, mode, earegister } => {
-                let addr = cpu.memory_handle(mode, earegister, Size::Long).read(4).inner();
+                let addr = cpu.memory_handle(mode).read(4).inner();
                 let mut addrreg = cpu.ar[register].as_ref().borrow_mut();
                 *addrreg = addr;
             }
@@ -620,7 +619,8 @@ impl Instruction {
             Self::NBCD { register, mode, earegister } => {}
             Self::MOVEP { dregister, opmode, aregister } => {
                 let oplength = 1 << ((opmode % 2) + 1);
-                let mut ram_handle = cpu.memory_handle(5, aregister, Size::Byte);
+                let extword = cpu.next_instruction() as i16;
+                let mut ram_handle = cpu.memory_handle(EAMode::AddressDisplacement(aregister, extword));
                 let mut result: u32 = 0;
                 if (opmode - 4) / 2 == 0 {
                     if oplength == 2 {
@@ -647,7 +647,7 @@ impl Instruction {
                 }
             }
             Self::SCC { condition, mode, earegister } => {
-                let dest = cpu.memory_handle(mode, earegister, Size::Byte);
+                let dest = cpu.memory_handle(mode);
                 if condition.evaluate(cpu) {
                     dest.write(OpResult::Byte(0xff));
                 } else {
@@ -661,7 +661,7 @@ impl Instruction {
                     (*cpu.dr[count].as_ref().borrow() % 64) as usize
                 };
                 let bitsize = 8 * size as usize;
-                let handle = cpu.memory_handle(0, register, size);
+                let handle = cpu.memory_handle(EAMode::DataDirect(register));
                 let mut ccr = CCRFlags::new();
                 let mut value = handle.read(size as usize).inner() as i32;
                 let msb = get_bit(value as usize, bitsize - 1);
@@ -707,7 +707,7 @@ impl Instruction {
                     (*cpu.dr[count].as_ref().borrow() % 64) as usize
                 };
                 let bitsize = 8 * size as usize;
-                let handle = cpu.memory_handle(0, register, size);
+                let handle = cpu.memory_handle(EAMode::DataDirect(register));
                 let mut ccr = CCRFlags::new();
                 let mut value = handle.read(size as usize).inner() as u32;
                 let msb = get_bit(value as usize, bitsize - 1);
@@ -756,12 +756,12 @@ impl Instruction {
             Self::MOVEA { register, size, mode, earegister } => {
                 match size {
                     Size::Long => {
-                        let src = cpu.memory_handle(mode, earegister, size).read(4).inner();
+                        let src = cpu.memory_handle(mode).read(4).inner();
                         let mut dest = cpu.ar[register].as_ref().borrow_mut();
                         *dest = src;
                     } 
                     Size::Word => {
-                        let src = cpu.memory_handle(mode, earegister, size).read(2).inner() as i16;
+                        let src = cpu.memory_handle(mode).read(2).inner() as i16;
                         let mut dest = cpu.ar[register].as_ref().borrow_mut();
                         *dest = src as u32;
                     }
@@ -783,8 +783,8 @@ impl Instruction {
             }
             Self::ADD { register, opmode, mode, earegister } => {
                 let bytesize = Size::from(opmode % 4);
-                let drhandle = cpu.memory_handle(0, register, Size::Byte);
-                let ophandle = cpu.memory_handle(mode, earegister, bytesize);
+                let drhandle = cpu.memory_handle(EAMode::DataDirect(register));
+                let ophandle = cpu.memory_handle(mode);
                 let dr = drhandle.read(bytesize as usize);
                 let op = ophandle.read(bytesize as usize);
                 let res = dr.add(op);
@@ -807,8 +807,8 @@ impl Instruction {
             Self::OR { register, opmode, mode, earegister } => {}
             Self::SUB { register, opmode, mode, earegister } => {}
             Self::MOVE { size, destreg, destmode, srcmode, srcreg } => {
-                let src = cpu.memory_handle(srcmode, srcreg, size);
-                let dest = cpu.memory_handle(destmode, destreg, size);
+                let src = cpu.memory_handle(srcmode);
+                let dest = cpu.memory_handle(destmode);
                 let result = src.read(size as usize);
                 dest.write(result);
                 let ccr = CCRFlags { c: Some(false), 
@@ -847,20 +847,20 @@ impl Instruction {
                     format!("move a{:},usp", register)
                 }
             }
-            Self::BCHGS { mode, earegister } => format!("bchg #{:},{:}", cpu.lookahead(1), addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::BCLRS { mode, earegister } => format!("bclr #{:},{:}", cpu.lookahead(1), addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::BSETS { mode, earegister } => format!("bset #{:},{:}", cpu.lookahead(1), addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::BTSTS { mode, earegister } => format!("btst #{:},{:}", cpu.lookahead(1), addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::JMP { mode, earegister } => format!("jmp {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::JSR { mode, earegister } => format!("jsr {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::MOVECCR { mode, earegister } => format!("move {:},ccr", addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::MOVEFROMSR { mode, earegister } => format!("move sr,{:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::MOVETOSR { mode, earegister } => format!("move {:},ccr", addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::PEA { mode, earegister } => format!("pea {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::TAS { mode, earegister } => format!("tas {:}", addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::BCHGS { mode, earegister } => format!("bchg #{:},{:}", cpu.lookahead(1), mode.as_asm()),
+            Self::BCLRS { mode, earegister } => format!("bclr #{:},{:}", cpu.lookahead(1), mode.as_asm()),
+            Self::BSETS { mode, earegister } => format!("bset #{:},{:}", cpu.lookahead(1), mode.as_asm()),
+            Self::BTSTS { mode, earegister } => format!("btst #{:},{:}", cpu.lookahead(1), mode.as_asm()),
+            Self::JMP { mode } => format!("jmp {:}", mode.as_asm()),
+            Self::JSR { mode } => format!("jsr {:}", mode.as_asm()),
+            Self::MOVECCR { mode } => format!("move {:},ccr", mode.as_asm()),
+            Self::MOVEFROMSR { mode } => format!("move sr,{:}", mode.as_asm()),
+            Self::MOVETOSR { mode } => format!("move {:},ccr", mode.as_asm()),
+            Self::PEA { mode, earegister } => format!("pea {:}", mode.as_asm()),
+            Self::TAS { mode, earegister } => format!("tas {:}", mode.as_asm()),
             Self::EXT { opmode, register } => format!("ext.{:} d{:}", if opmode == 2 { "w" } else { "l" }, register),
-            Self::ASLRMEM { dr, mode, earegister } => format!("as{:} {:}", if dr == 0 { "r" } else { "l" }, addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::LSLRMEM { dr, mode, earegister } => format!("ls{:} {:}", if dr == 0 { "r" } else { "l" }, addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::ASLRMEM { dr, mode, earegister } => format!("as{:} {:}", if dr == 0 { "r" } else { "l" }, mode.as_asm()),
+            Self::LSLRMEM { dr, mode, earegister } => format!("ls{:} {:}", if dr == 0 { "r" } else { "l" }, mode.as_asm()),
             Self::DBCC { condition, register } => String::from("dbcc"),
             Self::MOVEM { size, dr, mode, earegister } => {
                 // // FIXME: Handle address register
@@ -920,17 +920,17 @@ impl Instruction {
             }
             Self::ABCD { rx, ry, rm } => String::from("abcd"),
             Self::SBCD { rx, ry, rm } => String::from("sbcd"),
-            Self::ADDI { size, mode, earegister } => format!("addi.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
-            Self::ANDI { size, mode, earegister } => format!("andi.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
-            Self::CLR { size, mode, earegister } => format!("clr.{:} {:}", size.as_asm(), addr_as_asm(mode, earegister, size, cpu)),
-            Self::CMPI { size, mode, earegister } => format!("cmpi.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
-            Self::EORI { size, mode, earegister } => format!("eori.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
-            Self::NEG { size, mode, earegister } => format!("neg.{:} {:}", size.as_asm(), addr_as_asm(mode, earegister, size, cpu)),
-            Self::NEGX { size, mode, earegister } => format!("negx.{:} {:}", size.as_asm(), addr_as_asm(mode, earegister, size, cpu)),
-            Self::NOT { size, mode, earegister } => format!("not.{:} {:}", size.as_asm(), addr_as_asm(mode, earegister, size, cpu)),
-            Self::ORI { size, mode, earegister } => format!("ori.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
-            Self::SUBI { size, mode, earegister } => format!("subi.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), addr_as_asm(mode, earegister, size, cpu)),
-            Self::TST { size, mode, earegister } => format!("tst.{:} {:}", size.as_asm(), addr_as_asm(mode, earegister, size, cpu)),
+            Self::ADDI { size, mode, earegister: _ } => format!("addi.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), mode.as_asm()),
+            Self::ANDI { size, mode, earegister: _ } => format!("andi.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), mode.as_asm()),
+            Self::CLR { size, mode, earegister: _ } => format!("clr.{:} {:}", size.as_asm(), mode.as_asm()),
+            Self::CMPI { size, mode, earegister: _ } => format!("cmpi.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), mode.as_asm()),
+            Self::EORI { size, mode, earegister: _ } => format!("eori.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), mode.as_asm()),
+            Self::NEG { size, mode, earegister: _ } => format!("neg.{:} {:}", size.as_asm(), mode.as_asm()),
+            Self::NEGX { size, mode, earegister: _ } => format!("negx.{:} {:}", size.as_asm(), mode.as_asm()),
+            Self::NOT { size, mode, earegister: _ } => format!("not.{:} {:}", size.as_asm(), mode.as_asm()),
+            Self::ORI { size, mode, earegister: _ } => format!("ori.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), mode.as_asm()),
+            Self::SUBI { size, mode, earegister: _ } => format!("subi.{:} #${:x},{:}", size.as_asm(), cpu.lookahead(0), mode.as_asm()),
+            Self::TST { size, mode, earegister: _ } => format!("tst.{:} {:}", size.as_asm(), mode.as_asm()),
             Self::BRA { displacement } => {
                 let pc = if displacement == 0 {
                     let displacement_i16 = cpu.lookahead(0) as i16;
@@ -944,10 +944,10 @@ impl Instruction {
             Self::CMPM { ax, ay, size } => String::from("cmpm"),
             Self::ADDX { rx, ry, rm, size } => String::from("addx"),
             Self::SUBX { rx, ry, rm, size } => String::from("subx"),
-            Self::BCHG { register, mode, earegister } => format!("bchg d{:},{:}", register, addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::BCLR { register, mode, earegister } => format!("bclr d{:},{:}", register, addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::BSET { register, mode, earegister } => format!("bset d{:},{:}", register, addr_as_asm(mode, earegister, Size::Byte, cpu)),
-            Self::BTST { register, mode, earegister } => format!("btst d{:},{:}", register, addr_as_asm(mode, earegister, Size::Byte, cpu)),
+            Self::BCHG { register, mode, earegister } => format!("bchg d{:},{:}", register, mode.as_asm()),
+            Self::BCLR { register, mode, earegister } => format!("bclr d{:},{:}", register, mode.as_asm()),
+            Self::BSET { register, mode, earegister } => format!("bset d{:},{:}", register, mode.as_asm()),
+            Self::BTST { register, mode, earegister } => format!("btst d{:},{:}", register, mode.as_asm()),
             Self::DIVS { register, mode, earegister } => String::from("divs"),
             Self::DIVU { register, mode, earegister } => String::from("divu"),
             Self::LEA { register, mode, earegister } => String::from("lea"),           
@@ -971,7 +971,7 @@ impl Instruction {
             Self::MOVEQ { register, data } => format!("moveq #${:02x},d{:}", data, register),
             Self::EXG { mode, rx, ry } => String::from("exg"),
             Self::CHK { register, size, mode, earegister } => String::from("chk"),
-            Self::MOVEA { register, size, mode, earegister } => format!("movea.{:} {:},a{:}", size.as_asm(), addr_as_asm(mode, earegister, size, cpu), register),
+            Self::MOVEA { register, size, mode, earegister } => format!("movea.{:} {:},a{:}", size.as_asm(), mode.as_asm(), register),
             Self::ADDQ { data, size, mode, earegister } => String::from("addq"),
             Self::SUBQ { data, size, mode, earegister } => String::from("subq"),
             Self::BCC { condition, displacement } => {
@@ -987,10 +987,10 @@ impl Instruction {
                 let bytesize = Size::from(opmode % 4);
                 match opmode >> 2 {
                     0 => {
-                        format!("add.{:} {:},d{:}", bytesize.as_asm(), addr_as_asm(mode, earegister, bytesize, cpu), register)
+                        format!("add.{:} {:},d{:}", bytesize.as_asm(), mode.as_asm(), register)
                     },
                     _ => {
-                        format!("add.{:} d{:},{:}", bytesize.as_asm(), register, addr_as_asm(mode, earegister, bytesize, cpu))
+                        format!("add.{:} d{:},{:}", bytesize.as_asm(), register, mode.as_asm())
                     }
                 }
             }
@@ -1000,7 +1000,7 @@ impl Instruction {
             Self::OR { register, opmode, mode, earegister } => String::from("or"),
             Self::SUB { register, opmode, mode, earegister } => String::from("sub"),
             Self::MOVE { size, destreg, destmode, srcmode, srcreg } => {
-                format!("move.{:} {:},{:}", size.as_asm(), addr_as_asm(srcmode, srcreg, size, cpu), addr_as_asm(destmode, destreg, size, cpu))
+                format!("move.{:} {:},{:}", size.as_asm(), srcmode.as_asm(), destmode.as_asm())
             }
         }        
     }
@@ -1010,183 +1010,15 @@ fn privilege_violation(cpu: &mut CPU) {
     cpu.supervisor_mode(true);
     let mut ssp = cpu.ssp.as_ref().borrow_mut();
     *ssp -= 4;
-    let mut ram_handle = MemoryHandle { reg: None, ptr: Some(*ssp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+    let mut ram_handle = MemoryHandle::new(None, Some(*ssp as usize), None, cpu);
     ram_handle.write(OpResult::Long(cpu.pc));
     *ssp -= 2;
-    ram_handle = MemoryHandle { reg: None, ptr: Some(*ssp as usize), mem: Some(Rc::clone(&cpu.ram)) };
+    ram_handle = MemoryHandle::new(None, Some(*ssp as usize), None, cpu);
     ram_handle.write(OpResult::Word((cpu.sr & 0xffff) as u16));
     cpu.pc = 0x20;
 }
 
-fn addr_as_asm(mode: usize, earegister: usize, size: Size, cpu: &CPU) -> String {
-    match mode {
-        // Data register direct mode
-        0 => format!("d{:}", earegister),
-        // Address register direct mode
-        1 => format!("a{:}", earegister),
-        // Address register indirect mode
-        2 => format!("(a{:})", earegister),
-        // Address register indirect with postincrement mode
-        3 => format!("(a{:})+", earegister),
-        // Address register indirect with predecrement mode
-        4 => format!("-(a{:})", earegister),
-        // Address register indirect with displacement mode
-        5 => format!("{:x}(a{:})", cpu.lookahead(0) as i16, earegister),
-        6 => {
-            let opcode = cpu.lookahead(0);
-            if let Some(extword) = parse_extension_word(opcode) {
-                match extword {
-                    // Address Register Indirect with Index (8-Bit Displacement) Mode
-                    ExtensionWord::BEW { da, register: iregister, wl: _, scale, displacement } => {
-                        let da_flag = if da == 0 { "d" } else { "a" };
-                        let displ = (displacement & 0xff) as i8;
-                        format!("({:x}a{:},{:}{:}.{:}*{:})", displ, earegister, da_flag, iregister, size.as_asm(), scale)
-                    }
-                    // Address Register Indirect with Index (Base Displacement) Mode
-                    ExtensionWord::FEW { da, register: iregister, wl: _, scale, bs: _, is: _, bdsize: _, iis: _ } => {
-                        let da_flag = if da == 0 { "d" } else { "a" };
-                        let mut displacement: u32 = 0;
-                        let (bdsize, _) = extword.remaining_length();
-                        for j in 0..bdsize {
-                            displacement += (cpu.lookahead(j + 1) * (1 << (8 * (bdsize - j - 1)))) as u32;
-                        }
-                        format!("({:x}a{:},{:}{:}.{:}*{:})", displacement as i32, earegister, da_flag, iregister, size.as_asm(), scale)
-                    }
-                }
-            } else {
-                panic!("Invalid extension word!")
-            }
-        }
-        7 => {
-            let extword = cpu.lookahead(0);
-            match earegister {
-                0 => {
-                    // Absolute Short Addressing Mode
-                    format!("({:04x}).w", extword)
-                },
-                1 => {
-                    // Absolute Long Addressing Mode
-                    let extword2 = cpu.lookahead(1);
-                    let mut ptr = extword2 as usize;
-                    ptr += (extword as usize) << 16;
-                    format!("({:08x}).l", ptr)
-                }
-                2 => {
-                    // Program Counter Indirect with Displacement Mode
-                    format!("({:04x},pc", extword)
-                },
-                // 3 => {
-                //     // Program Counter Indirect with Index (8-Bit Displacement) Mode
-                //     // Program Counter Indirect with Index (Base Displacement) Mode
-                //     // Program Counter Memory Indirect Preindexed Mode
-                // },
-                4 => {
-                    // Immediate Data
-                    match size {
-                        Size::Byte => format!("#${:02x}", (extword & 0xff) as u8),
-                        Size::Word => format!("#${:04x}", extword),
-                        Size::Long => format!("#${:04x}{:04x}", extword, cpu.lookahead(1))
-                    }
-                }
-                _ => panic!("Invalid register!"),
-            }
-        }
-        _ => panic!("Invalid addressing mode!"),
-    }
-}
-
-#[derive(Copy, Clone)]
-pub enum Condition {
-    T = 0,
-    F = 1,
-    HI = 2,
-    LS = 3,
-    CC = 4,
-    CS = 5,
-    NE = 6,
-    EQ = 7,
-    VC = 8,
-    VS = 9,
-    PL = 10,
-    MI = 11,
-    GE = 12,
-    LT = 13,
-    GT = 14,
-    LE = 15
-}
-
-impl Condition {
-    pub fn from(condition: usize) -> Self {
-        match condition {
-            0 => Self::T,
-            1 => Self::F,
-            2 => Self::HI,
-            3 => Self::LS,
-            4 => Self::CC,
-            5 => Self::CS,
-            6 => Self::NE,
-            7 => Self::EQ,
-            8 => Self::VC,
-            9 => Self::VS,
-            10 => Self::PL,
-            11 => Self::MI,
-            12 => Self::GE,
-            13 => Self::LT,
-            14 => Self::GT,
-            15 => Self::LE,
-            _ => panic!("Invalid condition code!")
-        }
-    }
-    pub fn as_asm(&self) -> String {
-        match *self {
-            Self::T => String::from("t"),
-            Self::F => String::from("f"),
-            Self::HI => String::from("hi"),
-            Self::LS => String::from("ls"),
-            Self::CC => String::from("cc"),
-            Self::CS => String::from("cs"),
-            Self::NE => String::from("ne"),
-            Self::EQ => String::from("eq"),
-            Self::VC => String::from("vc"),
-            Self::VS => String::from("vs"),
-            Self::PL => String::from("pl"),
-            Self::MI => String::from("mi"),
-            Self::GE => String::from("ge"),
-            Self::LT => String::from("lt"),
-            Self::GT => String::from("gt"),
-            Self::LE => String::from("le"),
-        }
-    }
-    pub fn evaluate(&self, cpu: &CPU) -> bool {
-        match *self {
-            Self::T => true,
-            Self::F => false,
-            Self::HI => !cpu.ccr(CCR::C) && !cpu.ccr(CCR::Z),
-            Self::LS => cpu.ccr(CCR::C) || cpu.ccr(CCR::Z),
-            Self::CC => !cpu.ccr(CCR::C),
-            Self::CS => cpu.ccr(CCR::C),
-            Self::NE => !cpu.ccr(CCR::Z),
-            Self::EQ => cpu.ccr(CCR::Z),
-            Self::VC => !cpu.ccr(CCR::V),
-            Self::VS => cpu.ccr(CCR::V),
-            Self::PL => !cpu.ccr(CCR::N),
-            Self::MI => cpu.ccr(CCR::N),
-            Self::GE => (cpu.ccr(CCR::N) && cpu.ccr(CCR::V)) || (!cpu.ccr(CCR::N) && !cpu.ccr(CCR::V)),
-            Self::LT => (cpu.ccr(CCR::N) && !cpu.ccr(CCR::V)) || (!cpu.ccr(CCR::N) && cpu.ccr(CCR::V)),
-            Self::GT => (cpu.ccr(CCR::N) && cpu.ccr(CCR::V) && !cpu.ccr(CCR::Z)) || (!cpu.ccr(CCR::N) && !cpu.ccr(CCR::V) && !cpu.ccr(CCR::Z)),
-            Self::LE => cpu.ccr(CCR::Z) || (cpu.ccr(CCR::N) && !cpu.ccr(CCR::V)) || (!cpu.ccr(CCR::N) && cpu.ccr(CCR::V)),
-        }
-    }
-}
-
-enum Mode {
-    Flip,
-    Clear,
-    Set,
-    None
-}
-
-fn change_bit(mode: usize, earegister: usize, register: Option<usize>, cpu: &mut CPU, opmode: Mode) {
+fn change_bit(mode: EAMode, register: Option<usize>, cpu: &mut CPU, opmode: BitMode) {
     let extword = if register == None {
         cpu.next_instruction() as usize
     } else {
@@ -1195,12 +1027,12 @@ fn change_bit(mode: usize, earegister: usize, register: Option<usize>, cpu: &mut
     let handle: MemoryHandle;
     let bitnumber;
     let size;
-    if mode == 0 {
-        handle = cpu.memory_handle(mode, earegister, Size::Long);
+    if mode == EAMode::DataDirect(0) {
+        handle = cpu.memory_handle(mode);
         bitnumber = extword % 32;
         size = 4;
     } else {
-        handle = cpu.memory_handle(mode, earegister, Size::Byte);
+        handle = cpu.memory_handle(mode);
         bitnumber = extword % 8;
         size = 1;
     }
@@ -1210,13 +1042,13 @@ fn change_bit(mode: usize, earegister: usize, register: Option<usize>, cpu: &mut
     ccr.z = Some(!value);
     ccr.set(cpu);
     match opmode {
-        Mode::Clear => value = false,
-        Mode::Flip => value = !value,
-        Mode::Set => value = true,
-        Mode::None => {}
+        BitMode::Clear => value = false,
+        BitMode::Flip => value = !value,
+        BitMode::Set => value = true,
+        BitMode::None => {}
     }
     set_bit(&mut bitfield, bitnumber, value);
-    if mode == 0 {
+    if mode == EAMode::DataDirect(0) {
         handle.write(OpResult::Long(bitfield));
     } else {
         handle.write(OpResult::Byte((bitfield & 0xff) as u8));

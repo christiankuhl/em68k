@@ -1,9 +1,14 @@
+// This is the place for the basic processor implementation like the evaluation
+// loop and addressing capabilities, which are implemented in CPU.memory_handle().
+// The details about how said MemoryHandles behave are implemented in the memory
+// module.
+
 use std::fmt;
 use std::rc::Rc;
 use std::io::{stdin, stdout, Read, Write};
-use crate::parser::{parse_extension_word, parse_instruction};
-use crate::instructions::ExtensionWord::*;
-use crate::memory::{MemoryHandle, OpResult, Size, RamPtr, RegPtr};
+use crate::parser::parse_instruction;
+use crate::fields::{Size, EAMode};
+use crate::memory::{MemoryHandle, OpResult, RamPtr, RegPtr};
 
 pub struct CPU {
     pub pc: u32,         // Program counter
@@ -47,7 +52,7 @@ impl CCRFlags {
 impl CPU {
     pub fn clock_cycle(&mut self) {
         let opcode = self.next_instruction();
-        if let Some(instruction) = parse_instruction(opcode) {
+        if let Some(instruction) = parse_instruction(opcode, self) {
             println!("{:?}", self);
             println!("Next instruction: {:}", instruction.as_asm(self));
             pause();
@@ -61,127 +66,59 @@ impl CPU {
         self.pc += 2;
         instr
     }
-    pub fn memory_handle(&mut self, mode: usize, register: usize, size: Size) -> MemoryHandle {
+    pub fn memory_handle(&mut self, mode: EAMode) -> MemoryHandle {
         match mode {
-            // Data register direct mode
-            0 => MemoryHandle { reg: Some(Rc::clone(&self.dr[register])), ptr: None, mem: None },
-            // Address register direct mode
-            1 => MemoryHandle { reg: Some(Rc::clone(&self.ar[register].clone())), ptr: None, mem: None },
-            // Address register indirect mode
-            2 => {
+            EAMode::DataDirect(register) => MemoryHandle::new(Some(Rc::clone(&self.dr[register])), None, None, self),
+            EAMode::AddressDirect(register) => MemoryHandle::new(Some(Rc::clone(&self.ar[register].clone())), None, None, self),
+            EAMode::AddressIndirect(register) => {
                 let ptr = *self.ar[register].borrow() as usize;
-                MemoryHandle { reg: None, ptr: Some(ptr), mem: Some(Rc::clone(&self.ram)) }
+                MemoryHandle::new(None, Some(ptr), None, self)
             }
-            // Address register indirect with postincrement mode
-            3 => {
+            EAMode::AddressPostincr(register, size) => {
                 let ptr = (*self.ar[register]).borrow().clone() as usize;
                 if register == 7 && size as u32 == 1 {
                     *self.ar[register].borrow_mut() += 2;
                 } else {
                     *self.ar[register].borrow_mut() += size as u32;
                 }
-                MemoryHandle { reg: None, ptr: Some(ptr), mem: Some(Rc::clone(&self.ram)) }
+                MemoryHandle::new(None, Some(ptr), None, self)
             }
-            // Address register indirect with predecrement mode
-            4 => {
+            EAMode::AddressPredecr(register, size) => {
                 if register == 7 && size as u32 == 1 {
                     *self.ar[register].borrow_mut() -= 2;
                 } else {
                     *self.ar[register].borrow_mut() -= size as u32;
                 }
                 let ptr = *self.ar[register].borrow() as usize;
-                MemoryHandle { reg: None, ptr: Some(ptr), mem: Some(Rc::clone(&self.ram)) }
+                MemoryHandle::new(None, Some(ptr), None, self)
             }
-            // Address register indirect with displacement mode
-            5 => {
-                let displacement = self.next_instruction() as i16;
+            EAMode::AddressDisplacement(register, displacement) => {
                 let ptr = (*self.ar[register].borrow() + displacement as u32) as usize;
-                MemoryHandle { reg: None, ptr: Some(ptr), mem: Some(Rc::clone(&self.ram)) }
+                MemoryHandle ::new(None, Some(ptr), None, self)
             }
-            6 => {
-                let opcode = self.next_instruction();
-                if let Some(extword) = parse_extension_word(opcode) {
-                    let mut ptr;
-                    match extword {
-                        // Address Register Indirect with Index (8-Bit Displacement) Mode
-                        BEW { da, register: iregister, wl: _, scale, displacement } => {
-                            if da == 0 {
-                                ptr = *self.dr[iregister].borrow_mut();
-                            } else {
-                                ptr = *self.ar[iregister].borrow_mut();
-                            }
-                            ptr *= 1 << scale;
-                            ptr += (displacement & 0xff) as i8 as u32;
-                            MemoryHandle { reg: None, ptr: Some(ptr as usize), mem: Some(Rc::clone(&self.ram)) }
-                        }
-                        // Address Register Indirect with Index (Base Displacement) Mode
-                        FEW { da, register: iregister, wl: _, scale, bs: _, is: _, bdsize: _, iis: _ } => {
-                            if da == 0 {
-                                ptr = *self.dr[iregister].borrow_mut();
-                            } else {
-                                ptr = *self.ar[iregister].borrow_mut();
-                            }
-                            ptr *= 1 << scale;
-                            let mut displacement: u32 = 0;
-                            let (bdsize, _) = extword.remaining_length();
-                            for j in 0..bdsize {
-                                displacement += (self.next_instruction() * (1 << (8 * (bdsize - j - 1)))) as u32;
-                            }
-                            ptr += displacement;
-                            MemoryHandle { reg: None, ptr: Some(ptr as usize), mem: Some(Rc::clone(&self.ram)) }
-                        }
-                    }
+            EAMode::AddressIndex8Bit(register, iregister, displacement, size, scale, da) => {
+                let mut ptr = if da == 0 {
+                    *self.dr[iregister].borrow_mut()
                 } else {
-                    panic!("Invalid extension word!")
-                }
+                    *self.ar[iregister].borrow_mut()
+                } as i32;
+                ptr *= 1 << scale;
+                ptr += displacement as i32;
+                MemoryHandle::new(None, Some(ptr as usize), None, self)
             }
-            7 => {
-                let extword = self.next_instruction();
-                match register {
-                    // 0 => {
-                    //     // Absolute Short Addressing Mode
-                    // },
-                    1 => {
-                        // Absolute Long Addressing Mode
-                        let extword2 = self.next_instruction();
-                        let mut ptr = extword2 as usize;
-                        ptr += (extword as usize) << 16;
-                        MemoryHandle { reg: None, ptr: Some(ptr), mem: Some(Rc::clone(&self.ram)) }
-                    }
-                    // 2 => {
-                    //     // Program Counter Indirect with Displacement Mode
-                    // },
-                    // 3 => {
-                    //     // Program Counter Indirect with Index (8-Bit Displacement) Mode
-                    //     // Program Counter Indirect with Index (Base Displacement) Mode
-                    //     // Program Counter Memory Indirect Preindexed Mode
-                    // },
-                    4 => {
-                        // Immediate Data
-                        match size {
-                            Size::Byte => MemoryHandle {
-                                reg: None,
-                                ptr: Some(self.pc as usize - 1),
-                                mem: Some(Rc::clone(&self.ram)),
-                            },
-                            Size::Word => MemoryHandle {
-                                reg: None,
-                                ptr: Some(self.pc as usize - 2),
-                                mem: Some(Rc::clone(&self.ram)),
-                            },
-                            Size::Long => {
-                                self.pc += 2;
-                                MemoryHandle {
-                                    reg: None,
-                                    ptr: Some(self.pc as usize - 4),
-                                    mem: Some(Rc::clone(&self.ram)),
-                                }
-                            }
-                        }
-                    }
-                    _ => panic!("Invalid register!"),
-                }
+            EAMode::AddressIndexBase(register, iregister, displacement, size, scale, da) => {
+                let mut ptr = if da == 0 {
+                    *self.dr[iregister].borrow_mut()
+                } else {
+                    *self.ar[iregister].borrow_mut()
+                } as i32;
+                ptr *= 1 << scale;
+                ptr += displacement;
+                MemoryHandle::new(None, Some(ptr as usize), None, self)
             }
+            EAMode::AbsoluteShort(ptr) => MemoryHandle::new(None, Some(ptr), None, self),
+            EAMode::AbsoluteLong(ptr) => MemoryHandle::new(None, Some(ptr), None, self),
+            EAMode::Immediate(data) => MemoryHandle::new(None, None, Some(data), self),
             _ => panic!("Invalid addressing mode!"),
         }
     }
@@ -210,8 +147,8 @@ impl CPU {
             }
         }
     }
-    pub fn memory_address(&mut self, mode: usize, earegister: usize) -> u32 {
-        if let Some(ptr) = self.memory_handle(mode, earegister, Size::Byte).ptr {
+    pub fn memory_address(&mut self, mode: EAMode) -> u32 {
+        if let Some(ptr) = self.memory_handle(mode).ptr {
             (ptr & 0xffffffff) as u32
         } else {
             panic!("Invalid addressing mode!")
@@ -252,7 +189,6 @@ pub fn set_bit(bitfield: &mut u32, bit: usize, value: bool) {
 pub fn get_bit(bitfield: usize, bit: usize) -> bool {
     bitfield & (1 << bit) != 0
 }
-
 
 fn pause() {
     let mut stdout = stdout();

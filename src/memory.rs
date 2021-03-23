@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use crate::processor::CCRFlags;
+use std::fmt;
+use crate::processor::{CCRFlags, CPU};
 
 pub const RAM_SIZE: usize = 1 << 20;
 
@@ -12,41 +13,6 @@ pub enum OpResult {
     Byte(u8),
     Word(u16),
     Long(u32),
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum Size {
-    Byte = 1,
-    Word = 2,
-    Long = 4,
-}
-
-impl Size {
-    pub fn zero(&self) -> OpResult {
-        match *self {
-            Self::Byte => OpResult::Byte(0),
-            Self::Word => OpResult::Word(0),
-            Self::Long => OpResult::Long(0),
-        }
-    }
-}
-
-impl Size {
-    pub fn from(size: usize) -> Self {
-        match size {
-            0 => Self::Byte,
-            1 => Self::Word,
-            2 => Self::Long,
-            _ => panic!("Illegal operand size!") 
-        }
-    }
-    pub fn as_asm(&self) -> String {
-        match *self {
-            Self::Byte => String::from("b"),
-            Self::Word => String::from("w"),
-            Self::Long => String::from("l"),
-        }
-    }
 }
 
 impl OpResult {
@@ -125,13 +91,27 @@ impl OpResult {
     }
 }
 
+impl fmt::Display for OpResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            OpResult::Byte(b) => write!(f, "${:02x}", b),
+            OpResult::Word(w) => write!(f, "${:04x}", w),
+            OpResult::Long(l) => write!(f, "${:08x}", l),
+        }
+    }
+}
+
 pub struct MemoryHandle {
     pub reg: Option<RegPtr>,
     pub ptr: Option<usize>,
-    pub mem: Option<RamPtr>,
+    mem: Option<RamPtr>,
+    pub imm: Option<OpResult>
 }
 
 impl MemoryHandle {
+    pub fn new(reg: Option<RegPtr>, ptr: Option<usize>, imm: Option<OpResult>, cpu: &CPU) -> Self {
+        MemoryHandle { reg, ptr, imm, mem: Some(Rc::clone(&cpu.ram)) }
+    }
     pub fn read(&self, size: usize) -> OpResult {
         if let Some(ptr) = self.ptr {
             if let Some(mem) = &self.mem {
@@ -150,8 +130,7 @@ impl MemoryHandle {
             } else {
                 panic!("Invalid memory handle!")
             }
-        } else {
-            if let Some(reg) = &self.reg {
+        } else if let Some(reg) = &self.reg {
                 let raw_mem = reg.as_ref().borrow();
                 match size {
                     1 => OpResult::Byte((*raw_mem & 0xff) as u8),
@@ -159,9 +138,10 @@ impl MemoryHandle {
                     4 => OpResult::Long(*raw_mem & 0xffffffff),
                     _ => panic!("Invalid size!"),
                 }
-            } else {
-                panic!("Invalid memory handle!")
-            }
+        } else if let Some(data) = &self.imm {
+            *data
+        } else {
+            panic!("Invalid memory handle!")
         }
     }
     pub fn write(&self, res: OpResult) {
