@@ -1,5 +1,5 @@
 //TEMP
-#![allow(unused_variables)]
+// #![allow(unused_variables)]
 
 use std::fs;
 use std::cell::RefCell;
