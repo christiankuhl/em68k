@@ -12,6 +12,14 @@ mod fields;
 mod devices;
 use devices::{DeviceList, Debugger};
 
+use std::io;
+use tui::Terminal;
+use tui::backend::TermionBackend;
+use termion::raw::IntoRawMode;
+use tui::widgets::{Widget, Block, Borders};
+use tui::layout::{Layout, Constraint, Direction};
+
+
 pub struct Emulator {
     cpu: CPU,
     ram: RamPtr,
@@ -68,7 +76,7 @@ impl Emulator {
     }
 }
 
-fn main() {
+fn main() {    
     let mut dev = DeviceList::new();
     dev.push(Debugger::new());
     let mut em = Emulator::new(dev);
