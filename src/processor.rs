@@ -3,12 +3,12 @@
 // The details about how said MemoryHandles behave are implemented in the memory
 // module.
 
-use std::fmt;
-use std::rc::Rc;
-use std::io::{stdin, stdout, Read, Write};
+use crate::fields::{EAMode, Size, OpResult};
+use crate::memory::{MemoryHandle, RamPtr, RegPtr};
 use crate::parser::parse_instruction;
-use crate::fields::{Size, EAMode};
-use crate::memory::{MemoryHandle, OpResult, RamPtr, RegPtr};
+use std::fmt;
+use std::io::{stdin, stdout, Read, Write};
+use std::rc::Rc;
 
 pub struct CPU {
     pub pc: u32,         // Program counter
@@ -19,6 +19,7 @@ pub struct CPU {
     pub ram: RamPtr,     // Pointer to RAM
 }
 
+#[derive(Debug)]
 pub struct CCRFlags {
     pub c: Option<bool>,
     pub v: Option<bool>,
@@ -33,19 +34,31 @@ pub enum CCR {
     Z = 2,
     N = 3,
     X = 4,
-    S = 13
+    S = 13,
 }
 
 impl CCRFlags {
     pub fn new() -> CCRFlags {
-        CCRFlags {c: None, v: None, z: None, n: None, x: None}
+        CCRFlags { c: None, v: None, z: None, n: None, x: None }
     }
     pub fn set(&self, cpu: &mut CPU) {
-        if let Some(value) = self.c { set_bit(&mut cpu.sr, CCR::C as usize, value) };
-        if let Some(value) = self.v { set_bit(&mut cpu.sr, CCR::V as usize, value) };
-        if let Some(value) = self.z { set_bit(&mut cpu.sr, CCR::Z as usize, value) };
-        if let Some(value) = self.n { set_bit(&mut cpu.sr, CCR::N as usize, value) };
-        if let Some(value) = self.x { set_bit(&mut cpu.sr, CCR::X as usize, value) };
+        let mut ccr = cpu.sr as usize;
+        if let Some(value) = self.c {
+            set_bit(&mut ccr, CCR::C as usize, value)
+        };
+        if let Some(value) = self.v {
+            set_bit(&mut ccr, CCR::V as usize, value)
+        };
+        if let Some(value) = self.z {
+            set_bit(&mut ccr, CCR::Z as usize, value)
+        };
+        if let Some(value) = self.n {
+            set_bit(&mut ccr, CCR::N as usize, value)
+        };
+        if let Some(value) = self.x {
+            set_bit(&mut ccr, CCR::X as usize, value)
+        };
+        cpu.sr = ccr as u32;
     }
 }
 
@@ -62,14 +75,16 @@ impl CPU {
         }
     }
     pub fn next_instruction(&mut self) -> u16 {
-        let instr = self.lookahead(0); 
+        let instr = self.lookahead(0);
         self.pc += 2;
         instr
     }
     pub fn memory_handle(&mut self, mode: EAMode) -> MemoryHandle {
         match mode {
             EAMode::DataDirect(register) => MemoryHandle::new(Some(Rc::clone(&self.dr[register])), None, None, self),
-            EAMode::AddressDirect(register) => MemoryHandle::new(Some(Rc::clone(&self.ar[register].clone())), None, None, self),
+            EAMode::AddressDirect(register) => {
+                MemoryHandle::new(Some(Rc::clone(&self.ar[register].clone())), None, None, self)
+            }
             EAMode::AddressIndirect(register) => {
                 let ptr = *self.ar[register].borrow() as usize;
                 MemoryHandle::new(None, Some(ptr), None, self)
@@ -94,24 +109,18 @@ impl CPU {
             }
             EAMode::AddressDisplacement(register, displacement) => {
                 let ptr = (*self.ar[register].borrow() + displacement as u32) as usize;
-                MemoryHandle ::new(None, Some(ptr), None, self)
+                MemoryHandle::new(None, Some(ptr), None, self)
             }
             EAMode::AddressIndex8Bit(register, iregister, displacement, size, scale, da) => {
-                let mut ptr = if da == 0 {
-                    *self.dr[iregister].borrow_mut()
-                } else {
-                    *self.ar[iregister].borrow_mut()
-                } as i32;
+                let mut ptr =
+                    if da == 0 { *self.dr[iregister].borrow_mut() } else { *self.ar[iregister].borrow_mut() } as i32;
                 ptr *= 1 << scale;
                 ptr += displacement as i32;
                 MemoryHandle::new(None, Some(ptr as usize), None, self)
             }
             EAMode::AddressIndexBase(register, iregister, displacement, size, scale, da) => {
-                let mut ptr = if da == 0 {
-                    *self.dr[iregister].borrow_mut()
-                } else {
-                    *self.ar[iregister].borrow_mut()
-                } as i32;
+                let mut ptr =
+                    if da == 0 { *self.dr[iregister].borrow_mut() } else { *self.ar[iregister].borrow_mut() } as i32;
                 ptr *= 1 << scale;
                 ptr += displacement;
                 MemoryHandle::new(None, Some(ptr as usize), None, self)
@@ -123,7 +132,7 @@ impl CPU {
         }
     }
     pub fn supervisor_mode(&mut self, value: bool) {
-        set_bit(&mut self.sr, CCR::S as usize, value);
+        set_bit(&mut (self.sr as usize), CCR::S as usize, value);
     }
     pub fn in_supervisor_mode(&self) -> bool {
         self.ccr(CCR::S)
@@ -167,18 +176,20 @@ impl fmt::Debug for CPU {
                 d = *self.dr[j].borrow()
             ));
         }
-        s.push_str(&format!("\nCCR: X: {:} N: {:} Z: {:} V: {:} C: {:}", 
-            self.ccr(CCR::X) as u8, 
-            self.ccr(CCR::N) as u8, 
-            self.ccr(CCR::Z) as u8, 
-            self.ccr(CCR::V) as u8, 
-            self.ccr(CCR::C) as u8));
+        s.push_str(&format!(
+            "\nCCR: X: {:} N: {:} Z: {:} V: {:} C: {:}",
+            self.ccr(CCR::X) as u8,
+            self.ccr(CCR::N) as u8,
+            self.ccr(CCR::Z) as u8,
+            self.ccr(CCR::V) as u8,
+            self.ccr(CCR::C) as u8
+        ));
         s.push_str(&format!("\nPC: {:08x}", self.pc));
         write!(f, "{}", s)
     }
 }
 
-pub fn set_bit(bitfield: &mut u32, bit: usize, value: bool) {
+pub fn set_bit(bitfield: &mut usize, bit: usize, value: bool) {
     if value {
         *bitfield |= 1 << (bit as u8);
     } else {

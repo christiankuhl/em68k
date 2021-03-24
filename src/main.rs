@@ -1,15 +1,16 @@
 //TEMP
 // #![allow(unused_variables)]
 
-use std::fs;
 use std::cell::RefCell;
+use std::fs;
 use std::rc::Rc;
-mod processor;
+mod instructions;
 mod memory;
 mod parser;
-mod instructions;
-use processor::CPU;
+mod processor;
 use memory::{RamPtr, RAM_SIZE};
+use processor::CPU;
+mod conversions;
 mod fields;
 
 pub struct Emulator {

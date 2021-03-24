@@ -2,12 +2,14 @@
 // we opt for rich types wherever it is not too ridiculous.
 // The parser then becomes the naturally messy code responsible for constructing said rich types.
 
+use crate::conversions::Truncate;
+use crate::instructions::ExtensionWord;
+use crate::memory::MemoryHandle;
+use crate::parser::parse_extension_word;
+use crate::processor::{CCR, CPU, CCRFlags};
 use std::cmp::PartialEq;
 use std::mem::discriminant;
-use crate::parser::parse_extension_word;
-use crate::memory::OpResult;
-use crate::instructions::ExtensionWord;
-use crate::processor::{CPU, CCR};
+use std::fmt;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Size {
@@ -17,22 +19,25 @@ pub enum Size {
 }
 
 impl Size {
-    pub fn zero(&self) -> OpResult {
+    pub fn from<T>(&self, res: T) -> OpResult
+    where
+        T: Truncate<u8> + Truncate<u16> + Truncate<u32>,
+    {
         match *self {
-            Self::Byte => OpResult::Byte(0),
-            Self::Word => OpResult::Word(0),
-            Self::Long => OpResult::Long(0),
+            Self::Byte => OpResult::Byte(res.truncate()),
+            Self::Word => OpResult::Word(res.truncate()),
+            Self::Long => OpResult::Long(res.truncate()),
         }
     }
-}
-
-impl Size {
-    pub fn from(size: usize) -> Self {
+    pub fn zero(&self) -> OpResult {
+        self.from(0u8)
+    }
+    pub fn from_opcode(size: usize) -> Self {
         match size {
             0 => Self::Byte,
             1 => Self::Word,
             2 => Self::Long,
-            _ => panic!("Illegal operand size!") 
+            _ => panic!("Illegal operand size!"),
         }
     }
     pub fn as_asm(&self) -> String {
@@ -40,6 +45,99 @@ impl Size {
             Self::Byte => String::from("b"),
             Self::Word => String::from("w"),
             Self::Long => String::from("l"),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum OpResult {
+    Byte(u8),
+    Word(u16),
+    Long(u32),
+}
+
+impl OpResult {
+    pub fn inner(&self) -> u32 {
+        match *self {
+            Self::Byte(b) => b as u32,
+            Self::Word(w) => w as u32,
+            Self::Long(l) => l,
+        }
+    }
+    pub fn sign_extend(&self) -> i32 {
+        match *self {
+            Self::Byte(b) => b as i8 as i32,
+            Self::Word(w) => w as i16 as i32,
+            Self::Long(l) => l as i32,
+        }
+    }
+    pub fn sub(&self, other: Self) -> (Self, CCRFlags) {
+        let mut ccr = CCRFlags::new();
+        let src = other.sign_extend();
+        let dest = self.sign_extend();
+        let res = dest.overflowing_sub(src);
+        ccr.n = Some(res.0 < 0);
+        ccr.z = Some(res.0 == 0);
+        ccr.v = Some((src >= 0 && dest < 0 && res.0 >= 0) || (src < 0 && dest >= 0 && res.0 < 0));
+        ccr.c = Some((src < 0 && dest >= 0) || (res.0 < 0 && dest >= 0) || (src < 0 && res.0 < 0));
+        println!("{:?}, {}-{}={}", ccr, dest, src, res.0);
+        (self.size().from(res.0), ccr)
+    }
+    pub fn add(&self, other: Self) -> (Self, CCRFlags) {
+        let mut ccr = CCRFlags::new();
+        let src = self.sign_extend();
+        let dest = other.sign_extend();
+        let res = dest.overflowing_add(src);
+        ccr.n = Some(res.0 < 0);
+        ccr.z = Some(res.0 == 0);
+        ccr.v = Some((src < 0 && dest < 0 && res.0 >= 0) || (src >= 0 && dest >= 0 && res.0 < 0));
+        ccr.c = Some((src < 0 && dest < 0) || (res.0 >= 0 && dest < 0) || (src < 0 && res.0 >= 0));
+        (self.size().from(res.0), ccr)
+    }
+    pub fn and(&self, other: Self) -> (Self, CCRFlags) {
+        self.bitwise_op(other, |a: u32, b: u32| a & b)
+    }
+    pub fn or(&self, other: Self) -> (Self, CCRFlags) {
+        self.bitwise_op(other, |a: u32, b: u32| a | b)
+    }
+    pub fn xor(&self, other: Self) -> (Self, CCRFlags) {
+        self.bitwise_op(other, |a: u32, b: u32| a ^ b)
+    }
+    pub fn clear(&self) -> (Self, CCRFlags) {
+        self.bitwise_op(*self, |a: u32, b: u32| a ^ b)
+    }
+    pub fn not(&self) -> (Self, CCRFlags) {
+        self.bitwise_op(*self, |a: u32, _: u32| !a)
+    }
+    fn bitwise_op<T>(&self, other: Self, fun: T) -> (Self, CCRFlags)
+    where
+        T: Fn(u32, u32) -> u32,
+    {
+        let mut ccr = CCRFlags::new();
+        let src = self.inner();
+        let dest = other.inner();
+        let res = fun(src, dest);
+        ccr.n = Some((res as i32) < 0);
+        ccr.z = Some(res == 0);
+        ccr.v = Some(false);
+        ccr.c = Some(false);
+        (self.size().from(res), ccr)
+    }
+    pub fn size(&self) -> Size {
+        match self {
+            Self::Byte(_) => Size::Byte,
+            Self::Word(_) => Size::Word,
+            Self::Long(_) => Size::Long,
+        }
+    }
+}
+
+impl fmt::Display for OpResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match *self {
+            OpResult::Byte(b) => write!(f, "${:02x}", b),
+            OpResult::Word(w) => write!(f, "${:04x}", w),
+            OpResult::Long(l) => write!(f, "${:08x}", l),
         }
     }
 }
@@ -54,7 +152,7 @@ pub enum EAMode {
     AddressIndirect(usize),
     // Address register indirect with postincrement mode
     AddressPostincr(usize, Size),
-    // Address register indirect with predecrement mode    
+    // Address register indirect with predecrement mode
     AddressPredecr(usize, Size),
     // Address register indirect with displacement mode
     AddressDisplacement(usize, i16),
@@ -65,7 +163,7 @@ pub enum EAMode {
     // Absolute Short Addressing Mode
     AbsoluteShort(usize),
     // Absolute Long Addressing Mode
-    AbsoluteLong(usize), 
+    AbsoluteLong(usize),
     // Program Counter Indirect with Displacement Mode
     PCDisplacement(i32),
     // Program Counter Indirect with Index (8-Bit Displacement) Mode
@@ -94,7 +192,16 @@ impl EAMode {
                         ExtensionWord::BEW { da, register: iregister, wl: _, scale, displacement } => {
                             Self::AddressIndex8Bit(earegister, iregister, (displacement & 0xff) as i8, size, scale, da)
                         }
-                        ExtensionWord::FEW { da, register: iregister, wl: _, scale, bs: _, is: _, bdsize: _, iis: _ } => {
+                        ExtensionWord::FEW {
+                            da,
+                            register: iregister,
+                            wl: _,
+                            scale,
+                            bs: _,
+                            is: _,
+                            bdsize: _,
+                            iis: _,
+                        } => {
                             let mut displacement: u32 = 0;
                             let (bdsize, _) = extword.remaining_length();
                             for j in 0..bdsize {
@@ -130,20 +237,20 @@ impl EAMode {
                     // },
                     4 => {
                         let data = match size {
-                            Size::Byte => OpResult::Byte((extword &0xff) as u8),
+                            Size::Byte => OpResult::Byte((extword & 0xff) as u8),
                             Size::Word => OpResult::Word(extword),
                             Size::Long => {
                                 let extword2 = cpu.next_instruction();
-                                OpResult::Long(((extword as u32) << 16) + extword2 as u32) 
-                                }
-                            };
+                                OpResult::Long(((extword as u32) << 16) + extword2 as u32)
+                            }
+                        };
                         Self::Immediate(data)
                     }
                     _ => panic!("Invalid register!"),
                 }
             }
             _ => panic!("Invalid addressing mode!"),
-        }    
+        }
     }
     pub fn as_asm(&self) -> String {
         match *self {
@@ -165,8 +272,8 @@ impl EAMode {
             Self::AbsoluteLong(ptr) => format!("({:08x}).w", ptr),
             Self::PCDisplacement(ptr) => format!("({:04x},pc", ptr),
             Self::Immediate(data) => format!("#{:}", data),
-            _ => panic!("Not implemented yet!")
-        }    
+            _ => panic!("Not implemented yet!"),
+        }
     }
 }
 
@@ -193,7 +300,7 @@ pub enum Condition {
     GE = 12,
     LT = 13,
     GT = 14,
-    LE = 15
+    LE = 15,
 }
 
 impl Condition {
@@ -215,7 +322,7 @@ impl Condition {
             13 => Self::LT,
             14 => Self::GT,
             15 => Self::LE,
-            _ => panic!("Invalid condition code!")
+            _ => panic!("Invalid condition code!"),
         }
     }
     pub fn as_asm(&self) -> String {
@@ -254,8 +361,13 @@ impl Condition {
             Self::MI => cpu.ccr(CCR::N),
             Self::GE => (cpu.ccr(CCR::N) && cpu.ccr(CCR::V)) || (!cpu.ccr(CCR::N) && !cpu.ccr(CCR::V)),
             Self::LT => (cpu.ccr(CCR::N) && !cpu.ccr(CCR::V)) || (!cpu.ccr(CCR::N) && cpu.ccr(CCR::V)),
-            Self::GT => (cpu.ccr(CCR::N) && cpu.ccr(CCR::V) && !cpu.ccr(CCR::Z)) || (!cpu.ccr(CCR::N) && !cpu.ccr(CCR::V) && !cpu.ccr(CCR::Z)),
-            Self::LE => cpu.ccr(CCR::Z) || (cpu.ccr(CCR::N) && !cpu.ccr(CCR::V)) || (!cpu.ccr(CCR::N) && cpu.ccr(CCR::V)),
+            Self::GT => {
+                (cpu.ccr(CCR::N) && cpu.ccr(CCR::V) && !cpu.ccr(CCR::Z))
+                    || (!cpu.ccr(CCR::N) && !cpu.ccr(CCR::V) && !cpu.ccr(CCR::Z))
+            }
+            Self::LE => {
+                cpu.ccr(CCR::Z) || (cpu.ccr(CCR::N) && !cpu.ccr(CCR::V)) || (!cpu.ccr(CCR::N) && cpu.ccr(CCR::V))
+            }
         }
     }
 }
@@ -264,5 +376,55 @@ pub enum BitMode {
     Flip,
     Clear,
     Set,
-    None
+    None,
+}
+
+#[derive(Copy, Clone)]
+pub enum OpMode {
+    MemoryToRegister(Size),
+    RegisterToMemory(Size)
+}
+
+impl OpMode {
+    pub fn from_opcode(opmode: usize) -> Self {
+        let size = Size::from_opcode(opmode % 4);
+        match opmode >> 2 {
+            0 => {
+                Self::MemoryToRegister(size)
+            }
+            1 => {
+                Self::RegisterToMemory(size)
+            }
+            _ => panic!("Invalid opmode!")
+        }
+    }
+    pub fn size(&self) -> Size {
+        match *self {
+            Self::MemoryToRegister(size) | Self::RegisterToMemory(size) => size
+        }
+    }
+    pub fn write(&self, reghandle: MemoryHandle, memhandle: MemoryHandle, result: OpResult) {
+        match self {
+            Self::MemoryToRegister(_) => reghandle.write(result),
+            Self::RegisterToMemory(_) => memhandle.write(result),
+        }
+    }
+}
+
+impl fmt::Display for EAMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_asm())
+    }
+}
+
+impl fmt::Display for Condition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_asm())
+    }
+}
+
+impl fmt::Display for Size {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.as_asm())
+    }
 }

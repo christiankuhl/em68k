@@ -1,143 +1,44 @@
+use crate::processor::CPU;
+use crate::fields::{Size, OpResult};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::fmt;
-use crate::processor::{CCRFlags, CPU};
 
 pub const RAM_SIZE: usize = 1 << 20;
 
 pub type RamPtr = Rc<RefCell<[u8; RAM_SIZE]>>;
 pub type RegPtr = Rc<RefCell<u32>>;
 
-#[derive(Debug, Copy, Clone)]
-pub enum OpResult {
-    Byte(u8),
-    Word(u16),
-    Long(u32),
-}
-
-impl OpResult {
-    pub fn inner(&self) -> u32 {
-        match *self {
-            Self::Byte(b) => b as u32,
-            Self::Word(w) => w as u32,
-            Self::Long(l) => l,
-        }
-    }
-    pub fn sign_extend(&self) -> i32 {
-        match *self {
-            Self::Byte(b) => b as i8 as i32,
-            Self::Word(w) => w as i16 as i32,
-            Self::Long(l) => l as i32,
-        }
-    }
-    pub fn sub(&self, other: Self) -> (Self, CCRFlags) {
-        let mut ccr = CCRFlags::new();
-        let src = other.sign_extend();
-        let dest = self.sign_extend();
-        let res = dest.overflowing_sub(src);
-        ccr.n = Some(res.0 < 0);
-        ccr.z = Some(res.0 == 0);
-        ccr.v = Some((src >= 0 && dest < 0 && res.0 >= 0) || (src < 0 && dest >= 0 && res.0 < 0));
-        ccr.c = Some((src < 0 && dest >= 0) || (res.0 < 0 && dest >= 0) || (src < 0 && res.0 < 0));
-        match *self {
-            Self::Byte(_) => (Self::Byte((res.0 & 0xff) as u8), ccr),
-            Self::Word(_) => (Self::Word((res.0 & 0xffff) as u16), ccr),
-            Self::Long(_) => (Self::Long(res.0 as u32), ccr)
-        }
-    }
-    pub fn add(&self, other: Self) -> (Self, CCRFlags) {
-        let mut ccr = CCRFlags::new();
-        let src = self.sign_extend();
-        let dest = other.sign_extend();
-        let res = dest.overflowing_add(src);
-        ccr.n = Some(res.0 < 0);
-        ccr.z = Some(res.0 == 0);
-        ccr.v = Some((src < 0 && dest < 0 && res.0 >= 0) || (src >= 0 && dest >= 0 && res.0 < 0));
-        ccr.c = Some((src < 0 && dest < 0) || (res.0 >= 0 && dest < 0) || (src < 0 && res.0 >= 0));
-        match *self {
-            Self::Byte(_) => (Self::Byte((res.0 & 0xff) as u8), ccr),
-            Self::Word(_) => (Self::Word((res.0 & 0xffff) as u16), ccr),
-            Self::Long(_) => (Self::Long(res.0 as u32), ccr)
-        }
-    }
-    pub fn and(&self, other: Self) -> (Self, CCRFlags) {
-        self.bitwise_op(other, |a:u32, b:u32| a & b)
-    }
-    pub fn or(&self, other: Self) -> (Self, CCRFlags) {
-        self.bitwise_op(other, |a:u32, b:u32| a | b)
-    }
-    pub fn xor(&self, other: Self) -> (Self, CCRFlags) {
-        self.bitwise_op(other, |a:u32, b:u32| a ^ b)
-    }
-    pub fn clear(&self) -> (Self, CCRFlags) {
-        self.bitwise_op(*self, |a:u32, b:u32| a ^ b)
-    }
-    fn bitwise_op<T>(&self, other: Self, fun: T) -> (Self, CCRFlags)
-        where T: Fn(u32, u32)->u32
-    {
-        let mut ccr = CCRFlags::new();
-        let src = self.inner();
-        let dest = other.inner();
-        let res = fun(src, dest);
-        ccr.n = Some((res as i32) < 0);
-        ccr.z = Some(res == 0);
-        ccr.v = Some(false);
-        ccr.c = Some(false);
-        match *self {
-            Self::Byte(_) => (Self::Byte((res & 0xff) as u8), ccr),
-            Self::Word(_) => (Self::Word((res & 0xffff) as u16), ccr),
-            Self::Long(_) => (Self::Long(res as u32), ccr)
-        }
-    }
-}
-
-impl fmt::Display for OpResult {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match *self {
-            OpResult::Byte(b) => write!(f, "${:02x}", b),
-            OpResult::Word(w) => write!(f, "${:04x}", w),
-            OpResult::Long(l) => write!(f, "${:08x}", l),
-        }
-    }
-}
-
 pub struct MemoryHandle {
     pub reg: Option<RegPtr>,
     pub ptr: Option<usize>,
     mem: Option<RamPtr>,
-    pub imm: Option<OpResult>
+    pub imm: Option<OpResult>,
 }
 
 impl MemoryHandle {
     pub fn new(reg: Option<RegPtr>, ptr: Option<usize>, imm: Option<OpResult>, cpu: &CPU) -> Self {
         MemoryHandle { reg, ptr, imm, mem: Some(Rc::clone(&cpu.ram)) }
     }
-    pub fn read(&self, size: usize) -> OpResult {
+    pub fn read(&self, size: Size) -> OpResult {
         if let Some(ptr) = self.ptr {
             if let Some(mem) = &self.mem {
                 let raw_mem = mem.as_ref().borrow();
                 match size {
-                    1 => OpResult::Byte(raw_mem[ptr]),
-                    2 => OpResult::Word(u16::from_be_bytes([raw_mem[ptr], raw_mem[ptr + 1]])),
-                    4 => OpResult::Long(u32::from_be_bytes([
+                    Size::Byte => OpResult::Byte(raw_mem[ptr]),
+                    Size::Word => OpResult::Word(u16::from_be_bytes([raw_mem[ptr], raw_mem[ptr + 1]])),
+                    Size::Long => OpResult::Long(u32::from_be_bytes([
                         raw_mem[ptr],
                         raw_mem[ptr + 1],
                         raw_mem[ptr + 2],
                         raw_mem[ptr + 3],
-                    ])),
-                    _ => panic!("Invalid size!"),
+                    ]))
                 }
             } else {
                 panic!("Invalid memory handle!")
             }
         } else if let Some(reg) = &self.reg {
-                let raw_mem = reg.as_ref().borrow();
-                match size {
-                    1 => OpResult::Byte((*raw_mem & 0xff) as u8),
-                    2 => OpResult::Word((*raw_mem & 0xffff) as u16),
-                    4 => OpResult::Long(*raw_mem & 0xffffffff),
-                    _ => panic!("Invalid size!"),
-                }
+            let raw_mem = reg.as_ref().borrow();
+            size.from(*raw_mem)
         } else if let Some(data) = &self.imm {
             *data
         } else {
