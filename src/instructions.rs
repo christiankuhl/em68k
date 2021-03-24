@@ -1,4 +1,4 @@
-use crate::fields::{BitMode, Condition, EAMode, OpMode, Size, OpResult};
+use crate::fields::{BitMode, Condition, EAMode, OpMode, Size, OpResult, PackedBCD};
 use crate::fields::{Size::*, EAMode::*};
 use crate::memory::MemoryHandle;
 use crate::processor::{get_bit, set_bit, CCRFlags, CCR, CPU};
@@ -407,8 +407,45 @@ impl Instruction {
                     }
                 }
             }
-            Self::ABCD { rx, ry, rm } => {}
-            Self::SBCD { rx, ry, rm } => {}
+            Self::ABCD { rx, ry, rm } => {
+                let mut ccr = CCRFlags::new();
+                let src;
+                let dest;
+                if rm == 0 {
+                    src = cpu.memory_handle(DataDirect(ry));
+                    dest = cpu.memory_handle(DataDirect(rx));
+                } else {
+                    src = cpu.memory_handle(AddressPredecr(ry, Byte));
+                    dest = cpu.memory_handle(AddressPredecr(rx, Byte));
+                }
+                let a = PackedBCD::from(src.read(Byte));
+                let b = PackedBCD::from(src.read(Byte));
+                let (result, carry) = a.add(b, cpu.ccr(CCR::X));
+                dest.write(result.pack());
+                ccr.x = Some(carry);
+                ccr.c = Some(carry);
+                if result.value() == 0 { ccr.z = Some(true) };
+                ccr.set(cpu);
+            }
+            Self::SBCD { rx, ry, rm } => {
+                let mut ccr = CCRFlags::new();
+                let src;
+                let dest;
+                if rm == 0 {
+                    src = cpu.memory_handle(DataDirect(ry));
+                    dest = cpu.memory_handle(DataDirect(rx));
+                } else {
+                    src = cpu.memory_handle(AddressPredecr(ry, Byte));
+                    dest = cpu.memory_handle(AddressPredecr(rx, Byte));
+                }
+                let a = PackedBCD::from(src.read(Byte));
+                let b = PackedBCD::from(src.read(Byte));
+                let (result, carry) = a.sub(b, cpu.ccr(CCR::X));
+                dest.write(result.pack());
+                ccr.c = Some(carry);
+                if result.value() == 0 { ccr.z = Some(true) };
+                ccr.set(cpu);
+            }
             Self::ADDI { size, mode } => {
                 let handle = cpu.memory_handle(mode);
                 let operand = handle.read(size);

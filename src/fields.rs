@@ -411,6 +411,39 @@ impl OpMode {
     }
 }
 
+pub struct PackedBCD(u8);
+
+impl PackedBCD {
+    pub fn from(res: OpResult) -> Self {
+        match res {
+            OpResult::Byte(b) => { 
+                let value = (b & 0xf) + 10 * (b & 0xf0 >> 4);
+                if value > 9 { panic!("Invalid BCD encoding!") };
+                Self(value)
+            }
+            _ => panic!("Unsupported operation!")
+        }
+    }
+    pub fn pack(&self) -> OpResult {
+        let low_digit = self.0 % 10;
+        let high_digit = self.0 / 10;
+        OpResult::Byte(low_digit + (high_digit << 4))
+    }
+    pub fn add(&self, other: Self, extend: bool) -> (Self, bool) {
+        let result = self.0 + other.0 + extend as u8;
+        let carry = result > 99;
+        (Self(result % 100), carry)
+    }
+    pub fn sub(&self, other: Self, extend: bool) -> (Self, bool) {
+        let result = self.0 as i8 - other.0 as i8 - extend as i8;
+        let carry = result > 99 || result < 0;
+        (Self((result.abs() % 100) as u8), carry)
+    }
+    pub fn value(&self) -> u8 {
+        self.0
+    }
+}
+
 impl fmt::Display for EAMode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.as_asm())
