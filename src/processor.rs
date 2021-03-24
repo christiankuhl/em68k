@@ -6,17 +6,19 @@
 use crate::fields::{EAMode, Size, OpResult};
 use crate::memory::{MemoryHandle, RamPtr, RegPtr};
 use crate::parser::parse_instruction;
+use crate::instructions::Instruction;
 use std::fmt;
-use std::io::{stdin, stdout, Read, Write};
 use std::rc::Rc;
 
 pub struct CPU {
-    pub pc: u32,         // Program counter
-    pub sr: u32,         // Status register
-    pub dr: [RegPtr; 8], // Data registers
-    pub ar: [RegPtr; 8], // Address registers
-    pub ssp: RegPtr,     // Supervisory stack pointer
-    pub ram: RamPtr,     // Pointer to RAM
+    pub pc: u32,           // Program counter
+    pub sr: u32,           // Status register
+    pub dr: [RegPtr; 8],   // Data registers
+    pub ar: [RegPtr; 8],   // Address registers
+    pub ssp: RegPtr,       // Supervisory stack pointer
+    pub ram: RamPtr,       // Pointer to RAM
+    pub nxt: Instruction,  // Next instruction
+    pub prev: u32,         // Last program counter for debugging
 }
 
 #[derive(Debug)]
@@ -63,13 +65,16 @@ impl CCRFlags {
 }
 
 impl CPU {
+    pub fn new(pc: u32, sr: u32, dr: [RegPtr; 8], ar: [RegPtr; 8], ssp: RegPtr, ram: RamPtr) -> Self {
+        CPU { pc, sr, dr, ar, ssp, ram, nxt: Instruction::NOP, prev: 0 }
+    }
     pub fn clock_cycle(&mut self) {
+        let next_instruction = self.nxt;
+        self.prev = self.pc;
+        next_instruction.execute(self);
         let opcode = self.next_instruction();
         if let Some(instruction) = parse_instruction(opcode, self) {
-            println!("{:?}", self);
-            println!("Next instruction: {:}", instruction.as_asm(self));
-            pause();
-            instruction.execute(self);
+            self.nxt = instruction;
         } else {
             panic!("Illegal instruction!");
         }
@@ -112,17 +117,27 @@ impl CPU {
                 MemoryHandle::new(None, Some(ptr), None, self)
             }
             EAMode::AddressIndex8Bit(register, iregister, displacement, size, scale, da) => {
-                let mut ptr =
-                    if da == 0 { *self.dr[iregister].borrow_mut() } else { *self.ar[iregister].borrow_mut() } as i32;
+                let index_handle = if da == 0 { 
+                    self.memory_handle(EAMode::DataDirect(iregister))
+                } else { 
+                    self.memory_handle(EAMode::AddressDirect(iregister))
+                };
+                let mut ptr = index_handle.read(size).sign_extend() as i32;
                 ptr *= 1 << scale;
                 ptr += displacement as i32;
+                ptr += *self.ar[register].borrow() as i32;
                 MemoryHandle::new(None, Some(ptr as usize), None, self)
             }
             EAMode::AddressIndexBase(register, iregister, displacement, size, scale, da) => {
-                let mut ptr =
-                    if da == 0 { *self.dr[iregister].borrow_mut() } else { *self.ar[iregister].borrow_mut() } as i32;
+                let index_handle = if da == 0 { 
+                    self.memory_handle(EAMode::DataDirect(iregister))
+                } else { 
+                    self.memory_handle(EAMode::AddressDirect(iregister))
+                };
+                let mut ptr = index_handle.read(size).sign_extend() as i32;
                 ptr *= 1 << scale;
                 ptr += displacement;
+                ptr += *self.ar[register].borrow() as i32;
                 MemoryHandle::new(None, Some(ptr as usize), None, self)
             }
             EAMode::AbsoluteShort(ptr) => MemoryHandle::new(None, Some(ptr), None, self),
@@ -157,8 +172,8 @@ impl CPU {
         }
     }
     pub fn memory_address(&mut self, mode: EAMode) -> u32 {
-        if let Some(ptr) = self.memory_handle(mode).ptr {
-            (ptr & 0xffffffff) as u32
+        if let Some(ptr) = self.memory_handle(mode).ptr() {
+            ptr as u32
         } else {
             panic!("Invalid addressing mode!")
         }
@@ -184,7 +199,7 @@ impl fmt::Debug for CPU {
             self.ccr(CCR::V) as u8,
             self.ccr(CCR::C) as u8
         ));
-        s.push_str(&format!("\nPC: {:08x}", self.pc));
+        s.push_str(&format!("\nPC: {:08x}", self.prev));
         write!(f, "{}", s)
     }
 }
@@ -199,11 +214,4 @@ pub fn set_bit(bitfield: &mut usize, bit: usize, value: bool) {
 
 pub fn get_bit(bitfield: usize, bit: usize) -> bool {
     bitfield & (1 << bit) != 0
-}
-
-fn pause() {
-    let mut stdout = stdout();
-    stdout.write(b"Press Enter to continue, CTRL+C to quit...").unwrap();
-    stdout.flush().unwrap();
-    stdin().read(&mut [0]).unwrap();
 }

@@ -3,6 +3,7 @@ use crate::fields::{Size::*, EAMode::*};
 use crate::memory::MemoryHandle;
 use crate::processor::{get_bit, set_bit, CCRFlags, CCR, CPU};
 
+#[derive(Copy, Clone)]
 pub enum Instruction {
     ANDICCR,
     ANDISR,
@@ -99,7 +100,7 @@ pub enum ExtensionWord {
 impl ExtensionWord {
     pub fn remaining_length(&self) -> (usize, usize) {
         match *self {
-            Self::FEW { da, register, wl, scale, bs, is, bdsize, iis } => {
+            Self::FEW { da: _, register: _, wl: _, scale: _, bs: _, is: _, bdsize, iis } => {
                 let bdsize_out;
                 if bdsize == 2 || bdsize == 3 {
                     bdsize_out = bdsize - 1;
@@ -424,7 +425,7 @@ impl Instruction {
                 dest.write(result.pack());
                 ccr.x = Some(carry);
                 ccr.c = Some(carry);
-                if result.value() == 0 { ccr.z = Some(true) };
+                if result.value() != 0 { ccr.z = Some(false) };
                 ccr.set(cpu);
             }
             Self::SBCD { rx, ry, rm } => {
@@ -443,7 +444,7 @@ impl Instruction {
                 let (result, carry) = a.sub(b, cpu.ccr(CCR::X));
                 dest.write(result.pack());
                 ccr.c = Some(carry);
-                if result.value() == 0 { ccr.z = Some(true) };
+                if result.value() != 0 { ccr.z = Some(false) };
                 ccr.set(cpu);
             }
             Self::ADDI { size, mode } => {
@@ -720,7 +721,16 @@ impl Instruction {
                 dest.write(OpResult::Long(res.0 as u32));
                 ccr.set(cpu);
             }
-            Self::NBCD { mode } => {}
+            Self::NBCD { mode } => {
+                let mut ccr = CCRFlags::new();
+                let dest = cpu.memory_handle(mode);
+                let operand = PackedBCD::from(dest.read(Byte));
+                let (result, carry) = PackedBCD(0).sub(operand, cpu.ccr(CCR::X));
+                dest.write(result.pack());
+                ccr.c = Some(carry);
+                if result.value() != 0 { ccr.z = Some(false) };
+                ccr.set(cpu);
+            }
             Self::MOVEP { dregister, opmode, aregister } => {
                 let oplength = 1 << ((opmode % 2) + 1);
                 let extword = cpu.next_instruction() as i16;

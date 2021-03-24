@@ -1,6 +1,3 @@
-//TEMP
-// #![allow(unused_variables)]
-
 use std::cell::RefCell;
 use std::fs;
 use std::rc::Rc;
@@ -12,10 +9,13 @@ use memory::{RamPtr, RAM_SIZE};
 use processor::CPU;
 mod conversions;
 mod fields;
+mod devices;
+use devices::{DeviceList, Debugger};
 
 pub struct Emulator {
-    cpu: CPU,    // CPU
-    ram: RamPtr, // Pointer to RAM
+    cpu: CPU,
+    ram: RamPtr,
+    devices: DeviceList,
 }
 
 impl Emulator {
@@ -23,7 +23,9 @@ impl Emulator {
         self.initialize(program);
         loop {
             self.cpu.clock_cycle();
-            self.hardware_update();
+            for device in self.devices.iter_mut() {
+                device.update(&self.cpu);
+            }
         }
     }
     fn initialize(&mut self, progname: &str) {
@@ -35,13 +37,7 @@ impl Emulator {
         self.cpu.pc = 0x400;
         self.cpu.ssp.replace(0x400);
     }
-    fn hardware_update(&mut self) {
-        println!("\nHardware output:");
-        println!("0x100: {:02x?}", &self.ram.borrow()[0x100..0x108]);
-        println!("0x1000: {:02x?}", &self.ram.borrow()[0x1000..0x1004]);
-        println!("0x2000: {:02x?}", &self.ram.borrow()[0x2000..0x2004]);
-    }
-    pub fn new() -> Emulator {
+    pub fn new(mut devices: DeviceList) -> Emulator {
         let ram = RamPtr::new(RefCell::new([0u8; RAM_SIZE]));
         let ar = [
             Rc::new(RefCell::new(0)),
@@ -64,12 +60,17 @@ impl Emulator {
             Rc::new(RefCell::new(0)),
         ];
         let ssp = Rc::new(RefCell::new(0));
-        let cpu = CPU { pc: 0, sr: 0, dr: dr, ar: ar, ssp: ssp, ram: Rc::clone(&ram) };
-        Emulator { cpu: cpu, ram: Rc::clone(&ram) }
+        let cpu = CPU::new(0, 0, dr, ar, ssp, Rc::clone(&ram));
+        for device in devices.iter_mut() {
+            device.init(Rc::clone(&ram));
+        }
+        Emulator { cpu: cpu, ram: Rc::clone(&ram), devices: devices }
     }
 }
 
 fn main() {
-    let mut em = Emulator::new();
+    let mut dev = DeviceList::new();
+    dev.push(Debugger::new());
+    let mut em = Emulator::new(dev);
     em.run("examples/strtolower.bin");
 }

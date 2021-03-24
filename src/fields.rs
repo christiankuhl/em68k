@@ -80,7 +80,6 @@ impl OpResult {
         ccr.z = Some(res.0 == 0);
         ccr.v = Some((src >= 0 && dest < 0 && res.0 >= 0) || (src < 0 && dest >= 0 && res.0 < 0));
         ccr.c = Some((src < 0 && dest >= 0) || (res.0 < 0 && dest >= 0) || (src < 0 && res.0 < 0));
-        println!("{:?}, {}-{}={}", ccr, dest, src, res.0);
         (self.size().from(res.0), ccr)
     }
     pub fn add(&self, other: Self) -> (Self, CCRFlags) {
@@ -167,9 +166,11 @@ pub enum EAMode {
     // Program Counter Indirect with Displacement Mode
     PCDisplacement(i32),
     // Program Counter Indirect with Index (8-Bit Displacement) Mode
-    PCIndex8Bit,
+    PCIndex8Bit(usize, i8, Size, usize, usize),
     // Program Counter Indirect with Index (Base Displacement) Mode
-    PCIndexBase,
+    PCIndexBase(usize, i32, Size, usize, usize),
+    // Program Counter Memory Indirect Postindexed Mode
+    PCPostindexed,
     // Program Counter Memory Indirect Preindexed Mode
     PCPreindexed,
     // Immediate Data
@@ -192,16 +193,7 @@ impl EAMode {
                         ExtensionWord::BEW { da, register: iregister, wl: _, scale, displacement } => {
                             Self::AddressIndex8Bit(earegister, iregister, (displacement & 0xff) as i8, size, scale, da)
                         }
-                        ExtensionWord::FEW {
-                            da,
-                            register: iregister,
-                            wl: _,
-                            scale,
-                            bs: _,
-                            is: _,
-                            bdsize: _,
-                            iis: _,
-                        } => {
+                        ExtensionWord::FEW { da, register: iregister, wl: _, scale, bs: _, is: _, bdsize: _, iis: _,} => {
                             let mut displacement: u32 = 0;
                             let (bdsize, _) = extword.remaining_length();
                             for j in 0..bdsize {
@@ -217,24 +209,37 @@ impl EAMode {
             7 => {
                 let extword = cpu.next_instruction();
                 match earegister {
-                    // 0 => {
-                    //     // Absolute Short Addressing Mode
-                    // },
+                    0 => {
+                        Self::AbsoluteShort(extword as i16 as usize)
+                    },
                     1 => {
-                        // Absolute Long Addressing Mode
                         let extword2 = cpu.next_instruction();
                         let mut ptr = extword2 as usize;
                         ptr += (extword as usize) << 16;
                         Self::AbsoluteLong(ptr)
                     }
-                    // 2 => {
-                    //     // Program Counter Indirect with Displacement Mode
-                    // },
-                    // 3 => {
-                    //     // Program Counter Indirect with Index (8-Bit Displacement) Mode
-                    //     // Program Counter Indirect with Index (Base Displacement) Mode
-                    //     // Program Counter Memory Indirect Preindexed Mode
-                    // },
+                    2 => {
+                        Self::PCDisplacement(extword as i16 as i32)
+                    },
+                    3 => {
+                        if let Some(extword) = parse_extension_word(extword) {
+                            match extword {
+                                ExtensionWord::BEW { da, register, wl: _, scale, displacement } => {
+                                    Self::PCIndex8Bit(register, (displacement & 0xff) as i8, size, scale, da)
+                                }
+                                ExtensionWord::FEW { da, register, wl: _, scale, bs: _, is: _, bdsize: _, iis: _,} => {
+                                    let mut displacement: u32 = 0;
+                                    let (bdsize, _) = extword.remaining_length();
+                                    for j in 0..bdsize {
+                                        displacement += (cpu.next_instruction() * (1 << (8 * (bdsize - j - 1)))) as u32;
+                                    }
+                                    Self::PCIndexBase(register, displacement as i32, size, scale, da)
+                                }
+                            }
+                        } else {
+                            panic!("Invalid extension word!")
+                        }
+                    },
                     4 => {
                         let data = match size {
                             Size::Byte => OpResult::Byte((extword & 0xff) as u8),
@@ -411,7 +416,7 @@ impl OpMode {
     }
 }
 
-pub struct PackedBCD(u8);
+pub struct PackedBCD(pub u8);
 
 impl PackedBCD {
     pub fn from(res: OpResult) -> Self {

@@ -9,10 +9,10 @@ pub type RamPtr = Rc<RefCell<[u8; RAM_SIZE]>>;
 pub type RegPtr = Rc<RefCell<u32>>;
 
 pub struct MemoryHandle {
-    pub reg: Option<RegPtr>,
-    pub ptr: Option<usize>,
+    reg: Option<RegPtr>,
+    ptr: Option<usize>,
     mem: Option<RamPtr>,
-    pub imm: Option<OpResult>,
+    imm: Option<OpResult>,
 }
 
 impl MemoryHandle {
@@ -91,5 +91,8 @@ impl MemoryHandle {
             Some(ptr) => self.ptr = Some((ptr as isize + offset) as usize),
             _ => {}
         }
+    }
+    pub fn ptr(&self) -> Option<usize> {
+        self.ptr
     }
 }
