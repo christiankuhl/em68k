@@ -185,14 +185,14 @@ pub fn parse_extension_word(opcode: u16) -> Option<ExtensionWord> {
 
 pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
     match opcode {
-        _ANDICCR => return Some(ANDICCR),
-        _ANDISR => return Some(ANDISR),
-        _EORICCR => return Some(EORICCR),
-        _EORISR => return Some(EORISR),
+        _ANDICCR => return Some(ANDICCR { extword: cpu.next_instruction() }),
+        _ANDISR => return Some(ANDISR { extword: cpu.next_instruction() }),
+        _EORICCR => return Some(EORICCR { extword: cpu.next_instruction() }),
+        _EORISR => return Some(EORISR { extword: cpu.next_instruction() }),
         _ILLEGAL => return Some(ILLEGAL),
         _NOP => return Some(NOP),
-        _ORICCR => return Some(ORICCR),
-        _ORISR => return Some(ORISR),
+        _ORICCR => return Some(ORICCR { extword: cpu.next_instruction() }),
+        _ORISR => return Some(ORISR { extword: cpu.next_instruction() }),
         _RESET => return Some(RESET),
         _RTE => return Some(RTE),
         _RTR => return Some(RTR),
@@ -203,7 +203,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
     }
     // Specificity 13
     match split_instruction(opcode, vec![13, 3]).as_slice() {
-        [_LINK, register] => return Some(LINK { register: *register }),
+        [_LINK, register] => return Some(LINK { register: *register, displacement: cpu.next_instruction() as i16 }),
         [_SWAP, register] => return Some(SWAP { register: *register }),
         [_UNLK, register] => return Some(UNLK { register: *register }),
         _ => {}
@@ -285,16 +285,20 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
     }
     // Specificity 8
     match split_instruction(opcode, vec![8, 2, 3, 3]).as_slice() {
-        [_ADDI, size, mode, earegister] if size < &3 => {
+        [_ADDI, size, mode, earegister] if size < &3 => { 
+            let instr_size = Size::from_opcode(*size);
             return Some(ADDI {
-                size: Size::from_opcode(*size),
+                size: instr_size,
                 mode: EAMode::from(Size::from_opcode(*size), *mode, *earegister, cpu),
+                operand: cpu.immediate_operand(instr_size),
             })
         }
         [_ANDI, size, mode, earegister] => {
+            let instr_size = Size::from_opcode(*size);
             return Some(ANDI {
-                size: Size::from_opcode(*size),
+                size: instr_size,
                 mode: EAMode::from(Size::from_opcode(*size), *mode, *earegister, cpu),
+                operand: cpu.immediate_operand(instr_size),
             })
         }
         [_CLR, size, mode, earegister] => {
@@ -304,15 +308,19 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
             })
         }
         [_CMPI, size, mode, earegister] => {
+            let instr_size = Size::from_opcode(*size);
             return Some(CMPI {
-                size: Size::from_opcode(*size),
+                size: instr_size,
                 mode: EAMode::from(Size::from_opcode(*size), *mode, *earegister, cpu),
+                operand: cpu.immediate_operand(instr_size),
             })
         }
         [_EORI, size, mode, earegister] => {
+            let instr_size = Size::from_opcode(*size);
             return Some(EORI {
-                size: Size::from_opcode(*size),
+                size: instr_size,
                 mode: EAMode::from(Size::from_opcode(*size), *mode, *earegister, cpu),
+                operand: cpu.immediate_operand(instr_size),
             })
         }
         [_NEG, size, mode, earegister] => {
@@ -334,15 +342,19 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
             })
         }
         [_ORI, size, mode, earegister] => {
+            let instr_size = Size::from_opcode(*size);
             return Some(ORI {
-                size: Size::from_opcode(*size),
+                size: instr_size,
                 mode: EAMode::from(Size::from_opcode(*size), *mode, *earegister, cpu),
+                operand: cpu.immediate_operand(instr_size),
             })
         }
         [_SUBI, size, mode, earegister] => {
+            let instr_size = Size::from_opcode(*size);
             return Some(SUBI {
-                size: Size::from_opcode(*size),
+                size: instr_size,
                 mode: EAMode::from(Size::from_opcode(*size), *mode, *earegister, cpu),
+                operand: cpu.immediate_operand(instr_size),
             })
         }
         [_TST, size, mode, earegister] => {

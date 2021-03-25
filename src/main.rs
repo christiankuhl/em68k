@@ -12,14 +12,6 @@ mod fields;
 mod devices;
 use devices::{DeviceList, Debugger};
 
-use std::io;
-use tui::Terminal;
-use tui::backend::TermionBackend;
-use termion::raw::IntoRawMode;
-use tui::widgets::{Widget, Block, Borders};
-use tui::layout::{Layout, Constraint, Direction};
-
-
 pub struct Emulator {
     cpu: CPU,
     ram: RamPtr,
@@ -32,7 +24,7 @@ impl Emulator {
         loop {
             self.cpu.clock_cycle();
             for device in self.devices.iter_mut() {
-                device.update(&self.cpu);
+                device.update(&mut self.cpu);
             }
         }
     }

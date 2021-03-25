@@ -5,21 +5,21 @@ use crate::processor::{get_bit, set_bit, CCRFlags, CCR, CPU};
 
 #[derive(Copy, Clone)]
 pub enum Instruction {
-    ANDICCR,
-    ANDISR,
-    EORICCR,
-    EORISR,
+    ANDICCR { extword: u16 },
+    ANDISR { extword: u16 },
+    EORICCR { extword: u16 },
+    EORISR { extword: u16 },
     ILLEGAL,
     NOP,
-    ORICCR,
-    ORISR,
+    ORICCR { extword: u16 },
+    ORISR { extword: u16 },
     RESET,
     RTE,
     RTR,
     RTS,
     STOP,
     TRAPV,
-    LINK { register: usize },
+    LINK { register: usize, displacement: i16 },
     SWAP { register: usize },
     UNLK { register: usize },
     TRAP { vector: usize },
@@ -44,16 +44,16 @@ pub enum Instruction {
     MOVEM { size: Size, dr: usize, mode: EAMode },
     ABCD { rx: usize, ry: usize, rm: usize },
     SBCD { rx: usize, ry: usize, rm: usize },
-    ADDI { size: Size, mode: EAMode },
-    ANDI { size: Size, mode: EAMode },
+    ADDI { size: Size, mode: EAMode, operand: OpResult },
+    ANDI { size: Size, mode: EAMode, operand: OpResult },
     CLR { size: Size, mode: EAMode },
-    CMPI { size: Size, mode: EAMode },
-    EORI { size: Size, mode: EAMode },
+    CMPI { size: Size, mode: EAMode, operand: OpResult },
+    EORI { size: Size, mode: EAMode, operand: OpResult },
     NEG { size: Size, mode: EAMode },
     NEGX { size: Size, mode: EAMode },
     NOT { size: Size, mode: EAMode },
-    ORI { size: Size, mode: EAMode },
-    SUBI { size: Size, mode: EAMode },
+    ORI { size: Size, mode: EAMode, operand: OpResult },
+    SUBI { size: Size, mode: EAMode, operand: OpResult },
     TST { size: Size, mode: EAMode },
     BRA { displacement: usize },
     BSR { displacement: usize },
@@ -121,31 +121,28 @@ impl ExtensionWord {
 impl Instruction {
     pub fn execute(&self, cpu: &mut CPU) {
         match *self {
-            Self::ANDICCR => {
-                let extword = cpu.next_instruction();
+            Self::ANDICCR { extword } => {
                 cpu.sr &= (0xff00 | extword) as u32;
             }
-            Self::ANDISR => {
-                cpu.sr &= cpu.next_instruction() as u32;
+            Self::ANDISR { extword } => {
+                cpu.sr &= extword as u32;
             }
-            Self::EORICCR => {
-                let extword = cpu.next_instruction() as u32;
-                cpu.sr ^= 0x001f & extword;
+            Self::EORICCR { extword } => {
+                cpu.sr ^= 0x001f & extword as u32;
             }
-            Self::EORISR => {
-                cpu.sr ^= cpu.next_instruction() as u32;
+            Self::EORISR { extword } => {
+                cpu.sr ^= extword as u32;
             }
             Self::ILLEGAL => {
                 let trap = Self::TRAP { vector: 4 };
                 trap.execute(cpu);
             }
             Self::NOP => {}
-            Self::ORICCR => {
-                let extword = cpu.next_instruction();
+            Self::ORICCR { extword } => {
                 cpu.sr |= (0x001f & extword) as u32;
             }
-            Self::ORISR => {
-                cpu.sr |= cpu.next_instruction() as u32;
+            Self::ORISR { extword } => {
+                cpu.sr |= extword as u32;
             }
             Self::RESET => {
                 if !cpu.in_supervisor_mode() {
@@ -198,8 +195,7 @@ impl Instruction {
                     trap.execute(cpu);
                 }
             }
-            Self::LINK { register } => {
-                let displacement = cpu.next_instruction();
+            Self::LINK { register, displacement } => {
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
                 *sp -= 4;
                 let mut ar = cpu.ar[register].as_ref().borrow_mut();
@@ -447,21 +443,19 @@ impl Instruction {
                 if result.value() != 0 { ccr.z = Some(false) };
                 ccr.set(cpu);
             }
-            Self::ADDI { size, mode } => {
+            Self::ADDI { size, mode, operand } => {
                 let handle = cpu.memory_handle(mode);
-                let operand = handle.read(size);
-                let summand = cpu.immediate_operand(size);
-                let res = operand.add(summand);
+                let dest_operand = handle.read(size);
+                let res = dest_operand.add(operand);
                 let result = res.0;
                 let ccr = res.1;
                 handle.write(result);
                 ccr.set(cpu);
             }
-            Self::ANDI { size, mode } => {
+            Self::ANDI { size, mode, operand } => {
                 let dest = cpu.memory_handle(mode);
-                let operand = dest.read(size);
-                let src = cpu.immediate_operand(size);
-                let res = src.and(operand);
+                let dest_operand = dest.read(size);
+                let res = operand.and(dest_operand);
                 let ccr = res.1;
                 dest.write(res.0);
                 ccr.set(cpu);
@@ -473,18 +467,16 @@ impl Instruction {
                 dest.write(res.0);
                 ccr.set(cpu);
             }
-            Self::CMPI { size, mode } => {
-                let operand = cpu.memory_handle(mode).read(size);
-                let src = cpu.immediate_operand(size);
-                let res = operand.sub(src);
+            Self::CMPI { size, mode, operand } => {
+                let dest_operand = cpu.memory_handle(mode).read(size);
+                let res = dest_operand.sub(operand);
                 let ccr = res.1;
                 ccr.set(cpu);
             }
-            Self::EORI { size, mode } => {
+            Self::EORI { size, mode, operand } => {
                 let dest = cpu.memory_handle(mode);
-                let operand = dest.read(size);
-                let src = cpu.immediate_operand(size);
-                let res = src.xor(operand);
+                let dest_operand = dest.read(size);
+                let res = operand.xor(dest_operand);
                 let ccr = res.1;
                 dest.write(res.0);
                 ccr.set(cpu);
@@ -531,20 +523,18 @@ impl Instruction {
                 dest.write(res.0);
                 ccr.set(cpu);
             }
-            Self::ORI { size, mode } => {
+            Self::ORI { size, mode, operand } => {
                 let dest = cpu.memory_handle(mode);
-                let operand = dest.read(size);
-                let src = cpu.immediate_operand(size);
-                let res = src.or(operand);
+                let dest_operand = dest.read(size);
+                let res = operand.or(dest_operand);
                 let ccr = res.1;
                 dest.write(res.0);
                 ccr.set(cpu);
             }
-            Self::SUBI { size, mode } => {
+            Self::SUBI { size, mode, operand } => {
                 let handle = cpu.memory_handle(mode);
-                let operand = handle.read(size);
-                let subtrahend = cpu.immediate_operand(size);
-                let res = operand.sub(subtrahend);
+                let subtractor = handle.read(size);
+                let res = subtractor.sub(operand);
                 let result = res.0;
                 let ccr = res.1;
                 handle.write(result);
@@ -945,21 +935,21 @@ impl Instruction {
     }
     pub fn as_asm(&self, cpu: &CPU) -> String {
         match *self {
-            Self::ANDICCR => format!("andi #${:04x},ccr", cpu.lookahead(0)),
-            Self::ANDISR => format!("andi #${:04x},sr", cpu.lookahead(0)),
-            Self::EORICCR => format!("eori #${:04x},ccr", cpu.lookahead(0)),
-            Self::EORISR => format!("eori #${:04x},sr", cpu.lookahead(0)),
+            Self::ANDICCR { extword } => format!("andi #${:04x},ccr", extword),
+            Self::ANDISR { extword } => format!("andi #${:04x},sr", extword),
+            Self::EORICCR { extword } => format!("eori #${:04x},ccr", extword),
+            Self::EORISR { extword } => format!("eori #${:04x},sr", extword),
             Self::ILLEGAL => String::from("illegal"),
             Self::NOP => String::from("nop"),
-            Self::ORICCR => format!("ori #${:04x},ccr", cpu.lookahead(0)),
-            Self::ORISR => format!("ori #${:04x},sr", cpu.lookahead(0)),
+            Self::ORICCR { extword } => format!("ori #${:04x},ccr", extword),
+            Self::ORISR { extword } => format!("ori #${:04x},sr", extword),
             Self::RESET => String::from("reset"),
             Self::RTE => String::from("rte"),
             Self::RTR => String::from("rtr"),
             Self::RTS => String::from("rts"),
             Self::STOP => String::from("stop"),
             Self::TRAPV => String::from("trapv"),
-            Self::LINK { register } => format!("link a{},#${:04x}", register, cpu.lookahead(0)),
+            Self::LINK { register, displacement } => format!("link a{},#${:04x}", register, displacement),
             Self::SWAP { register } => format!("swap d{}", register),
             Self::UNLK { register } => format!("unlk a{}", register),
             Self::TRAP { vector } => format!("trap #{}", vector),
@@ -1019,16 +1009,16 @@ impl Instruction {
                     format!("abcd -(a{}),-(a{})", ry, rx)
                 }
             },
-            Self::ADDI { size, mode } => format!("addi.{} #${:x},{}", size, cpu.lookahead(0), mode),
-            Self::ANDI { size, mode } => format!("andi.{} #${:x},{}", size, cpu.lookahead(0), mode),
+            Self::ADDI { size, mode, operand } => format!("addi.{} #${},{}", size, operand, mode),
+            Self::ANDI { size, mode, operand } => format!("andi.{} #${},{}", size, operand, mode),
             Self::CLR { size, mode } => format!("clr.{} {}", size, mode),
-            Self::CMPI { size, mode } => format!("cmpi.{} #${:x},{}", size, cpu.lookahead(0), mode),
-            Self::EORI { size, mode } => format!("eori.{} #${:x},{}", size, cpu.lookahead(0), mode),
+            Self::CMPI { size, mode, operand } => format!("cmpi.{} #${},{}", size, operand, mode),
+            Self::EORI { size, mode, operand } => format!("eori.{} #${},{}", size, operand, mode),
             Self::NEG { size, mode } => format!("neg.{} {}", size, mode),
             Self::NEGX { size, mode } => format!("negx.{} {}", size, mode),
             Self::NOT { size, mode } => format!("not.{} {}", size, mode),
-            Self::ORI { size, mode } => format!("ori.{} #${:x},{}", size, cpu.lookahead(0), mode),
-            Self::SUBI { size, mode } => format!("subi.{} #${:x},{}", size, cpu.lookahead(0), mode),
+            Self::ORI { size, mode, operand } => format!("ori.{} #${},{}", size, operand, mode),
+            Self::SUBI { size, mode, operand } => format!("subi.{} #${},{}", size, operand, mode),
             Self::TST { size, mode } => format!("tst.{} {}", size, mode),
             Self::BRA { displacement } => {
                 let pc = if displacement == 0 {

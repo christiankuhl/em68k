@@ -152,9 +152,9 @@ impl CPU {
     pub fn in_supervisor_mode(&self) -> bool {
         self.ccr(CCR::S)
     }
-    pub fn lookahead(&self, offset: usize) -> u16 {
+    pub fn lookahead(&self, offset: isize) -> u16 {
         let raw_mem = *self.ram.borrow();
-        let ptr = self.pc as usize + 2 * offset;
+        let ptr = (self.pc as isize + 2 * offset) as usize;
         u16::from_be_bytes([raw_mem[ptr], raw_mem[ptr + 1]])
     }
     pub fn ccr(&self, bit: CCR) -> bool {
@@ -177,6 +177,30 @@ impl CPU {
         } else {
             panic!("Invalid addressing mode!")
         }
+    }
+    pub fn disassemble(&mut self) -> Vec<(u32, Vec<u16>, String)> {
+        let initial_pc = self.pc;
+        let mut disassembly = Vec::new();
+        let mut opcodes = Vec::new();
+        let length = (self.pc - self.prev) / 2;
+        for j in 0..length {
+            opcodes.push(self.lookahead(j as isize - length as isize));
+        }
+        disassembly.push((self.prev, opcodes, self.nxt.as_asm(self)));
+        for _ in 0..10 {
+            let pc = self.pc;
+            let mut opcodes = Vec::new();
+            let opcode = self.next_instruction();
+            let instr = parse_instruction(opcode, self).unwrap();
+            let length = (self.pc - pc) / 2;
+            println!("After parse: {:04x}, before: {:04x}, length {}", self.pc, pc, length);
+            for j in 0..length {
+                opcodes.push(self.lookahead(j as isize - length as isize));
+            }
+            disassembly.push((self.pc, opcodes, instr.as_asm(self)));
+        }
+        self.pc = initial_pc;
+        disassembly
     }
 }
 

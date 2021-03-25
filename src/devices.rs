@@ -5,7 +5,6 @@ use std::rc::Rc;
 
 use tui::Terminal;
 use tui::backend::TermionBackend;
-// use termion::raw::IntoRawMode;
 use tui::widgets::{Widget, Block, Borders};
 // use tui::layout::{Layout, Constraint, Direction};
 // use termion::event::{Key, Event};
@@ -21,25 +20,25 @@ pub type DeviceList = Vec<Box<dyn Device>>;
 
 pub trait Device {
     fn init(&mut self, ram: RamPtr);
-    fn update(&mut self, cpu: &CPU);
+    fn update(&mut self, cpu: &mut CPU);
 }
 
 pub struct Debugger {
     ram: RamPtr,
     // stdout: termion::raw::RawTerminal<std::io::Stdout>,
     // backend: tui::backend::TermionBackend<termion::raw::RawTerminal<std::io::Stdout>>,
-    terminal: tui::Terminal<tui::backend::TermionBackend<termion::raw::RawTerminal<std::io::Stdout>>>,
+    // terminal: tui::Terminal<tui::backend::TermionBackend<termion::raw::RawTerminal<std::io::Stdout>>>,
 }
 
 impl Debugger {
     pub fn new() -> Box<Self> {
-        let stdout = stdout().into_raw_mode().unwrap();
-        let backend = TermionBackend::new(stdout);
-        let mut terminal = Terminal::new(backend).unwrap();
-        terminal.clear().expect("Terminal clear failed.");
+        // let stdout = stdout().into_raw_mode().unwrap();
+        // let backend = TermionBackend::new(stdout);
+        // let mut terminal = Terminal::new(backend).unwrap();
+        // terminal.clear().expect("Terminal clear failed.");
         Box::new(Debugger { 
             ram: Rc::new(RefCell::new([0; RAM_SIZE])),
-            terminal: terminal,
+            // terminal: terminal,
         })
     }
 }
@@ -48,14 +47,26 @@ impl Device for Debugger {
     fn init(&mut self, ram: RamPtr) {
         self.ram = ram;
     }
-    fn update(&mut self, cpu: &CPU) {
-        self.terminal.draw(|f| {
-            let size = f.size();
-            let block = Block::default()
-                .title("Block")
-                .borders(Borders::ALL);
-            f.render_widget(block, size);
-        }).expect("UI draw failed!");
+    fn update(&mut self, cpu: &mut CPU) {
+        // self.terminal.draw(|f| {
+        //     let size = f.size();
+        //     let block = Block::default()
+        //         .title("Block")
+        //         .borders(Borders::ALL);
+        //     f.render_widget(block, size);
+        // }).expect("UI draw failed!");
+
+        write!(stdout(), "{:?}\n\n", cpu);
+        write!(stdout(), "{:}\n\n", cpu.nxt.as_asm(cpu));
+
+        for line in cpu.disassemble() {
+            let mut out = format!("{:08x} ", line.0);
+            for word in line.1 {
+                out.push_str(&format!("{:04x} ", word));
+            }
+            write!(stdout(), "{:<30}{}\n", out, line.2);
+        }
+        stdout().flush().unwrap();
         pause();
     }
 }
@@ -81,4 +92,5 @@ fn pause() {
         }
         stdout.flush().unwrap();
     }
+    write!(stdout, "{}", termion::clear::All);
 }
