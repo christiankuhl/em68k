@@ -7,6 +7,7 @@ use crate::fields::{EAMode, OpResult, Size};
 use crate::instructions::Instruction;
 use crate::memory::{MemoryHandle, RamPtr, RegPtr};
 use crate::parser::parse_instruction;
+use crate::devices::Signal;
 use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::rc::Rc;
@@ -71,14 +72,18 @@ impl CPU {
     pub fn new(pc: u32, sr: u32, dr: [RegPtr; 8], ar: [RegPtr; 8], ssp: RegPtr, ram: RamPtr) -> Self {
         CPU { pc, sr, dr, ar, ssp, ram, nxt: Instruction::NOP, prev: 0, jmp: 0 }
     }
-    pub fn clock_cycle(&mut self) {
+    pub fn clock_cycle(&mut self) -> Signal {
         let next_instruction = self.nxt;
         self.prev = self.pc;
-        next_instruction.execute(self);
+        match next_instruction.execute(self) {
+            Signal::Quit => return Signal::Quit,
+            _ => {}
+        }
         self.jmp = self.pc;
         let opcode = self.next_instruction();
         if let Some(instruction) = parse_instruction(opcode, self) {
             self.nxt = instruction;
+            Signal::Ok
         } else {
             panic!("Illegal instruction!");
         }

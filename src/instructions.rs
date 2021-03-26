@@ -2,6 +2,7 @@ use crate::fields::{BitMode, Condition, EAMode, OpMode, OpResult, PackedBCD, Siz
 use crate::fields::{EAMode::*, Size::*};
 use crate::memory::MemoryHandle;
 use crate::processor::{get_bit, set_bit, CCRFlags, CCR, CPU};
+use crate::devices::Signal;
 
 #[derive(Copy, Clone)]
 pub enum Instruction {
@@ -119,7 +120,7 @@ impl ExtensionWord {
 }
 
 impl Instruction {
-    pub fn execute(&self, cpu: &mut CPU) {
+    pub fn execute(&self, cpu: &mut CPU) -> Signal {
         match *self {
             Self::ANDICCR { extword } => {
                 cpu.sr &= (0xff00 | extword) as u32;
@@ -185,7 +186,7 @@ impl Instruction {
                     privilege_violation(cpu);
                 } else {
                     cpu.sr = extword;
-                    // FIXME: Implement actual CPU STOP
+                    return Signal::Quit
                 }
             }
             Self::TRAPV => {
@@ -630,7 +631,8 @@ impl Instruction {
                 let res = dividend.overflowing_div(divisor);
                 if res.1 {
                     ccr.v = Some(true);
-                    return;
+                    ccr.set(cpu);
+                    return Signal::Ok
                 }
                 let rem = (dividend % divisor) * dividend.signum();
                 dest.write(OpResult::Long((rem as u32 & 0xffff0000) + (res.0 as u32 & 0xffff)));
@@ -653,7 +655,8 @@ impl Instruction {
                 let res = dividend.overflowing_div(divisor);
                 if res.1 {
                     ccr.v = Some(true);
-                    return;
+                    ccr.set(cpu);
+                    return Signal::Ok
                 }
                 let rem = dividend % divisor;
                 dest.write(OpResult::Long((rem as u32 & 0xffff0000) + (res.0 as u32 & 0xffff)));
@@ -908,6 +911,7 @@ impl Instruction {
                 ccr.set(cpu);
             }
         }
+        Signal::Ok
     }
     pub fn as_asm(&self, cpu: &CPU) -> String {
         match *self {

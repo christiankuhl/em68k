@@ -24,7 +24,10 @@ impl Emulator {
         let mut detached = Vec::new();
         let mut attached = DeviceList::new();
         loop {
-            self.cpu.clock_cycle();
+            match self.cpu.clock_cycle() {
+                Signal::Quit => break,
+                _ => {}
+            }
             for (j, device) in self.devices.iter_mut().enumerate() {
                 match device.update(&mut self.cpu) {
                     Signal::Quit => return,
