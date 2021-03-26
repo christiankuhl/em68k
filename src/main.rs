@@ -10,7 +10,7 @@ use processor::CPU;
 mod conversions;
 mod devices;
 mod fields;
-use devices::{Debugger, DeviceList, Signal};
+use devices::{Debugger, DeviceList, Signal, ASMStream};
 
 pub struct Emulator {
     cpu: CPU,
@@ -51,10 +51,11 @@ impl Emulator {
         let program = fs::read(progname).expect("Program does not exist!");
         let mut raw_mem = self.ram.as_ref().borrow_mut();
         for (j, &b) in program.iter().enumerate() {
-            raw_mem[j + 0x400] = b;
+            raw_mem[j + 0xfc0000] = b;
         }
-        self.cpu.pc = 0x400;
-        self.cpu.ssp.replace(0x400);
+        self.cpu.pc = 0xfc0030;
+        self.cpu.ssp.replace(0x602e0104);
+        self.cpu.supervisor_mode(true);
     }
     pub fn new(mut devices: DeviceList) -> Emulator {
         let ram = RamPtr::new(RefCell::new([0u8; RAM_SIZE]));
@@ -66,7 +67,7 @@ impl Emulator {
             Rc::new(RefCell::new(0)),
             Rc::new(RefCell::new(0)),
             Rc::new(RefCell::new(0)),
-            Rc::new(RefCell::new(0x104)),
+            Rc::new(RefCell::new(0x602e0104)),
         ];
         let dr = [
             Rc::new(RefCell::new(0)),
@@ -89,7 +90,8 @@ impl Emulator {
 
 fn main() {
     let mut dev = DeviceList::new();
-    dev.push(Debugger::new());
+    // dev.push(Debugger::new());
+    dev.push(Box::new(ASMStream));
     let mut em = Emulator::new(dev);
-    em.run("examples/strtolower.bin");
+    em.run("tos/tos106de.img");
 }

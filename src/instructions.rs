@@ -282,7 +282,7 @@ impl Instruction {
             }
             Self::MOVETOSR { mode } => {
                 let src = cpu.memory_handle(mode).read(Word).inner();
-                cpu.sr = src & 0x8e0;
+                cpu.sr = src & 0xf71f;
             }
             Self::PEA { mode } => {
                 let addr = cpu.memory_address(mode);
@@ -948,7 +948,7 @@ impl Instruction {
             Self::JSR { mode } => format!("jsr {}", mode),
             Self::MOVECCR { mode } => format!("move {},ccr", mode),
             Self::MOVEFROMSR { mode } => format!("move sr,{}", mode),
-            Self::MOVETOSR { mode } => format!("move {},ccr", mode),
+            Self::MOVETOSR { mode } => format!("move {},sr", mode),
             Self::PEA { mode } => format!("pea {}", mode),
             Self::TAS { mode } => format!("tas {}", mode),
             Self::EXT { opmode, register } => format!("ext.{} d{}", if opmode == 2 { "w" } else { "l" }, register),

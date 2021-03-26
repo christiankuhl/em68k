@@ -3,7 +3,7 @@ use crate::processor::CPU;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub const RAM_SIZE: usize = 1 << 20;
+pub const RAM_SIZE: usize = 1 << 24;
 
 pub type RamPtr = Rc<RefCell<[u8; RAM_SIZE]>>;
 pub type RegPtr = Rc<RefCell<u32>>;

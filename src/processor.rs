@@ -81,11 +81,14 @@ impl CPU {
         }
         self.jmp = self.pc;
         let opcode = self.next_instruction();
+        println!("{:16b}", opcode);
         if let Some(instruction) = parse_instruction(opcode, self) {
             self.nxt = instruction;
             Signal::Ok
         } else {
             panic!("Illegal instruction!");
+            // self.nxt = Instruction::NOP;
+            // Signal::Ok
         }
     }
     pub fn next_instruction(&mut self) -> u16 {
@@ -154,7 +157,9 @@ impl CPU {
         }
     }
     pub fn supervisor_mode(&mut self, value: bool) {
-        set_bit(&mut (self.sr as usize), CCR::S as usize, value);
+        let mut sr = self.sr as usize;
+        set_bit(&mut sr, CCR::S as usize, value);
+        self.sr = sr as u32;
     }
     pub fn in_supervisor_mode(&self) -> bool {
         self.ccr(CCR::S)
@@ -189,29 +194,25 @@ impl CPU {
         let initial_pc = self.pc;
         let mut disassembly = VecDeque::with_capacity(lines);
         let mut opcodes = Vec::new();
-        if self.pc > self.prev {
-            let length = (self.pc - self.prev) / 2;
-            for j in 0..length {
-                opcodes.push(self.lookahead(j as isize - length as isize));
-            }
-            disassembly.push_back((self.prev, opcodes, self.nxt.as_asm(self)));
-        } else {
-            let length = (self.pc - self.jmp) / 2;
-            for j in 0..length {
-                opcodes.push(self.lookahead(j as isize - length as isize));
-            }
-            disassembly.push_back((self.jmp, opcodes, self.nxt.as_asm(self)));
+        let length = (self.pc - self.jmp) / 2;
+        for j in 0..length {
+            opcodes.push(self.lookahead(j as isize - length as isize));
         }
+        disassembly.push_back((self.jmp, opcodes, self.nxt.as_asm(self)));
         for _ in 0..lines - 1 {
             let pc = self.pc;
             let mut opcodes = Vec::new();
             let opcode = self.next_instruction();
-            let instr = parse_instruction(opcode, self).unwrap();
+            let instr = parse_instruction(opcode, self);
             let length = (self.pc - pc) / 2;
             for j in 0..length {
                 opcodes.push(self.lookahead(j as isize - length as isize));
             }
-            disassembly.push_back((pc, opcodes, instr.as_asm(self)));
+            let instr_txt = match instr {
+                Some(instruction) => instruction.as_asm(self),
+                None => String::from("ERR"),
+            };
+            disassembly.push_back((pc, opcodes, instr_txt));
         }
         self.pc = initial_pc;
         disassembly
@@ -232,11 +233,12 @@ impl fmt::Display for CPU {
                 d = *self.dr[j].borrow()
             ));
         }
-        s.push_str("╟────┴─┬─┬─┬─┬─┬─┼────┼───────────╢\n");
-        s.push_str("║      │X│N│Z│V│C│    │           ║\n");
-        s.push_str("╟──────┼─┼─┼─┼─┼─┼────┼───────────╢\n");
+        s.push_str("╟────┼─┬─┬─┬─┬─┬─┼────┼───────────╢\n");
+        s.push_str("║    │S│X│N│Z│V│C│    │           ║\n");
+        s.push_str("╟────┼─┼─┼─┼─┼─┼─┼────┼───────────╢\n");
         s.push_str(&format!(
-            "║ CCR  │{}│{}│{}│{}│{}│ PC │  {:08x} ║\n",
+            "║ SR │{}│{}│{}│{}│{}│{}│ PC │  {:08x} ║\n",
+            self.ccr(CCR::S) as u8,
             self.ccr(CCR::X) as u8,
             self.ccr(CCR::N) as u8,
             self.ccr(CCR::Z) as u8,
@@ -244,7 +246,7 @@ impl fmt::Display for CPU {
             self.ccr(CCR::C) as u8,
             self.pc,
         ));
-        s.push_str("╚══════╧═╧═╧═╧═╧═╧════╧═══════════╩\n");
+        s.push_str("╚════╧═╧═╧═╧═╧═╧═╧════╧═══════════╩\n");
         write!(f, "{}", s)
     }
 }
@@ -282,14 +284,18 @@ impl Disassembly {
             disassembled.insert(line.0, j);
         }
         let mut jumped = false;
-        if cpu.jmp != self.disassembly[self.cursor].0 {
-            match disassembled.get(&cpu.jmp) {
-                Some(cursor) => {
-                    jumped = true;
-                    self.cursor = *cursor + 1;
+        if self.cursor < self.length {
+            if cpu.jmp != self.disassembly[self.cursor].0 {
+                match disassembled.get(&cpu.jmp) {
+                    Some(cursor) => {
+                        jumped = true;
+                        self.cursor = *cursor + 1;
+                    }
+                    None => self.cursor = 0,
                 }
-                None => self.cursor = 0,
             }
+        } else {
+            self.cursor = 0
         }
         if self.cursor == 0 {
             self.disassembly = cpu.disassemble(self.length);

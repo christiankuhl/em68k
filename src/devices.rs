@@ -62,3 +62,20 @@ impl Device for Debugger {
         Signal::Ok
     }
 }
+
+pub struct ASMStream;
+
+impl Device for ASMStream {
+    fn init(&mut self, _ram: RamPtr) {}
+    fn update(&mut self, cpu: &mut CPU) -> Signal {
+        let mut dis = cpu.disassemble(1);
+        for mut instr in dis.drain(..) {
+            let mut hex = String::new();
+            for opcode in instr.1.drain(..) {
+                hex.push_str(&format!(" {:04x}", opcode))
+            }
+            println!("{:08x}:{:<30} {}", instr.0, hex, instr.2);
+        }
+        Signal::Ok
+    }
+}

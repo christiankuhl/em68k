@@ -235,7 +235,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         [_JSR, mode, earegister] => return Some(JSR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
         [_MOVECCR, mode, earegister] => return Some(MOVECCR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
         [_MOVEFROMSR, mode, earegister] => return Some(MOVEFROMSR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
-        [_MOVETOSR, mode, earegister] => return Some(MOVETOSR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
+        [_MOVETOSR, mode, earegister] => return Some(MOVETOSR { mode: EAMode::from(Size::Word, *mode, *earegister, cpu) }),
         [_PEA, mode, earegister] => return Some(PEA { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
         [_TAS, mode, earegister] => return Some(TAS { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
         [_NBCD, mode, earegister] => return Some(NBCD { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
@@ -264,7 +264,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         _ => {}
     }
     match split_instruction(opcode, vec![4, 4, 5, 3]).as_slice() {
-        [5, condition, _DBCC, register] if condition > &1 => {
+        [5, condition, _DBCC, register] => {
             return Some(DBCC {
                 condition: Condition::from(*condition),
                 register: *register,
@@ -387,8 +387,8 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         _ => {}
     }
     match split_instruction(opcode, vec![4, 3, 1, 2, 2, 1, 3]).as_slice() {
-        [_ADDX, rx, 1, size, 0, rm, ry] => return Some(ADDX { rx: *rx, ry: *ry, rm: *rm, size: Size::from_opcode(*size) }),
-        [_SUBX, rx, 1, size, 0, rm, ry] => return Some(SUBX { rx: *rx, ry: *ry, rm: *rm, size: Size::from_opcode(*size) }),
+        [_ADDX, rx, 1, size, 0, rm, ry] if size < &3 => return Some(ADDX { rx: *rx, ry: *ry, rm: *rm, size: Size::from_opcode(*size) }),
+        [_SUBX, rx, 1, size, 0, rm, ry] if size < &3 => return Some(SUBX { rx: *rx, ry: *ry, rm: *rm, size: Size::from_opcode(*size) }),
         _ => {}
     }
     // Specificity 7
@@ -432,7 +432,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
     }
     // Specificity 6
     match split_instruction(opcode, vec![4, 4, 2, 3, 3]).as_slice() {
-        [_SCC, condition, 3, mode, earegister] if condition > &1 => {
+        [_SCC, condition, 3, mode, earegister] if mode != &1 => {
             return Some(SCC {
                 condition: Condition::from(*condition),
                 mode: EAMode::from(Size::Byte, *mode, *earegister, cpu),
@@ -482,19 +482,19 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         _ => {}
     }
     match split_instruction(opcode, vec![4, 3, 1, 2, 3, 3]).as_slice() {
-        [0x5, data, _ADDQ, size, mode, earegister] => {
-            let opsize = Size::from_opcode(1 << (4 - *size));
+        [0x5, data, _ADDQ, size, mode, earegister] if size < &3 => {
+            let opsize = Size::from_opcode(*size);
             return Some(ADDQ { data: *data, size: opsize, mode: EAMode::from(opsize, *mode, *earegister, cpu) });
         }
-        [0x5, data, _SUBQ, size, mode, earegister] => {
-            let opsize = Size::from_opcode(1 << (4 - *size));
+        [0x5, data, _SUBQ, size, mode, earegister] if size < &3 => {
+            let opsize = Size::from_opcode(*size);
             return Some(SUBQ { data: *data, size: opsize, mode: EAMode::from(opsize, *mode, *earegister, cpu) });
         }
         _ => {}
     }
     // Specificity 4
     match split_instruction(opcode, vec![4, 4, 8]).as_slice() {
-        [_BCC, condition, displacement] if condition < &13 => {
+        [_BCC, condition, displacement] if condition > &1 => {
             return Some(BCC { condition: Condition::from(*condition), displacement: opt_displacement(*displacement, cpu) })
         }
         _ => {}
@@ -535,7 +535,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
                 mode: EAMode::from(Size::Byte, *mode, *earegister, cpu),
             })
         }
-        [_SUB, register, opmode, mode, earegister] => {
+        [_SUB, register, opmode, mode, earegister] if opmode != &3 && opmode != &7 => {
             return Some(SUB {
                 register: *register,
                 opmode: OpMode::from_opcode(*opmode),
