@@ -3,22 +3,25 @@
 // The details about how said MemoryHandles behave are implemented in the memory
 // module.
 
-use crate::fields::{EAMode, Size, OpResult};
+use crate::fields::{EAMode, OpResult, Size};
+use crate::instructions::Instruction;
 use crate::memory::{MemoryHandle, RamPtr, RegPtr};
 use crate::parser::parse_instruction;
-use crate::instructions::Instruction;
+use std::collections::{HashMap, VecDeque};
 use std::fmt;
 use std::rc::Rc;
+use termion::{color, cursor};
 
 pub struct CPU {
-    pub pc: u32,           // Program counter
-    pub sr: u32,           // Status register
-    pub dr: [RegPtr; 8],   // Data registers
-    pub ar: [RegPtr; 8],   // Address registers
-    pub ssp: RegPtr,       // Supervisory stack pointer
-    pub ram: RamPtr,       // Pointer to RAM
-    pub nxt: Instruction,  // Next instruction
-    pub prev: u32,         // Last program counter for debugging
+    pub pc: u32,          // Program counter
+    pub sr: u32,          // Status register
+    pub dr: [RegPtr; 8],  // Data registers
+    pub ar: [RegPtr; 8],  // Address registers
+    pub ssp: RegPtr,      // Supervisory stack pointer
+    pub ram: RamPtr,      // Pointer to RAM
+    pub nxt: Instruction, // Next instruction (debugger)
+    prev: u32,            // Last program counter (debugger)
+    jmp: u32,             // Last jump location (debugger)
 }
 
 #[derive(Debug)]
@@ -66,12 +69,13 @@ impl CCRFlags {
 
 impl CPU {
     pub fn new(pc: u32, sr: u32, dr: [RegPtr; 8], ar: [RegPtr; 8], ssp: RegPtr, ram: RamPtr) -> Self {
-        CPU { pc, sr, dr, ar, ssp, ram, nxt: Instruction::NOP, prev: 0 }
+        CPU { pc, sr, dr, ar, ssp, ram, nxt: Instruction::NOP, prev: 0, jmp: 0 }
     }
     pub fn clock_cycle(&mut self) {
         let next_instruction = self.nxt;
         self.prev = self.pc;
         next_instruction.execute(self);
+        self.jmp = self.pc;
         let opcode = self.next_instruction();
         if let Some(instruction) = parse_instruction(opcode, self) {
             self.nxt = instruction;
@@ -87,9 +91,7 @@ impl CPU {
     pub fn memory_handle(&mut self, mode: EAMode) -> MemoryHandle {
         match mode {
             EAMode::DataDirect(register) => MemoryHandle::new(Some(Rc::clone(&self.dr[register])), None, None, self),
-            EAMode::AddressDirect(register) => {
-                MemoryHandle::new(Some(Rc::clone(&self.ar[register].clone())), None, None, self)
-            }
+            EAMode::AddressDirect(register) => MemoryHandle::new(Some(Rc::clone(&self.ar[register].clone())), None, None, self),
             EAMode::AddressIndirect(register) => {
                 let ptr = *self.ar[register].borrow() as usize;
                 MemoryHandle::new(None, Some(ptr), None, self)
@@ -117,9 +119,9 @@ impl CPU {
                 MemoryHandle::new(None, Some(ptr), None, self)
             }
             EAMode::AddressIndex8Bit(register, iregister, displacement, size, scale, da) => {
-                let index_handle = if da == 0 { 
+                let index_handle = if da == 0 {
                     self.memory_handle(EAMode::DataDirect(iregister))
-                } else { 
+                } else {
                     self.memory_handle(EAMode::AddressDirect(iregister))
                 };
                 let mut ptr = index_handle.read(size).sign_extend() as i32;
@@ -129,9 +131,9 @@ impl CPU {
                 MemoryHandle::new(None, Some(ptr as usize), None, self)
             }
             EAMode::AddressIndexBase(register, iregister, displacement, size, scale, da) => {
-                let index_handle = if da == 0 { 
+                let index_handle = if da == 0 {
                     self.memory_handle(EAMode::DataDirect(iregister))
-                } else { 
+                } else {
                     self.memory_handle(EAMode::AddressDirect(iregister))
                 };
                 let mut ptr = index_handle.read(size).sign_extend() as i32;
@@ -178,52 +180,66 @@ impl CPU {
             panic!("Invalid addressing mode!")
         }
     }
-    pub fn disassemble(&mut self) -> Vec<(u32, Vec<u16>, String)> {
+    pub fn disassemble(&mut self, lines: usize) -> VecDeque<(u32, Vec<u16>, String)> {
         let initial_pc = self.pc;
-        let mut disassembly = Vec::new();
+        let mut disassembly = VecDeque::with_capacity(lines);
         let mut opcodes = Vec::new();
-        let length = (self.pc - self.prev) / 2;
-        for j in 0..length {
-            opcodes.push(self.lookahead(j as isize - length as isize));
+        if self.pc > self.prev {
+            let length = (self.pc - self.prev) / 2;
+            for j in 0..length {
+                opcodes.push(self.lookahead(j as isize - length as isize));
+            }
+            disassembly.push_back((self.prev, opcodes, self.nxt.as_asm(self)));
+        } else {
+            let length = (self.pc - self.jmp) / 2;
+            for j in 0..length {
+                opcodes.push(self.lookahead(j as isize - length as isize));
+            }
+            disassembly.push_back((self.jmp, opcodes, self.nxt.as_asm(self)));
         }
-        disassembly.push((self.prev, opcodes, self.nxt.as_asm(self)));
-        for _ in 0..10 {
+        for _ in 0..lines - 1 {
             let pc = self.pc;
             let mut opcodes = Vec::new();
             let opcode = self.next_instruction();
             let instr = parse_instruction(opcode, self).unwrap();
             let length = (self.pc - pc) / 2;
-            println!("After parse: {:04x}, before: {:04x}, length {}", self.pc, pc, length);
             for j in 0..length {
                 opcodes.push(self.lookahead(j as isize - length as isize));
             }
-            disassembly.push((self.pc, opcodes, instr.as_asm(self)));
+            disassembly.push_back((pc, opcodes, instr.as_asm(self)));
         }
         self.pc = initial_pc;
         disassembly
     }
 }
 
-impl fmt::Debug for CPU {
+impl fmt::Display for CPU {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut s = String::from("\nRegisters:\n");
+        let mut s = String::from("\n");
+        s.push_str("╔═════════════════════════════════╦\n");
+        s.push_str("║ CPU state                       ║\n");
+        s.push_str("╟────┬───────────┬────┬───────────╫\n");
         for j in 0..8 {
             s.push_str(&format!(
-                "A{j}: {a:08x}     D{j}: {d:08x}\n",
+                "║ A{j} │  {a:08x} │ D{j} │  {d:08x} ║\n",
                 j = j,
                 a = *self.ar[j].borrow(),
                 d = *self.dr[j].borrow()
             ));
         }
+        s.push_str("╟────┴─┬─┬─┬─┬─┬─┼────┼───────────╢\n");
+        s.push_str("║      │X│N│Z│V│C│    │           ║\n");
+        s.push_str("╟──────┼─┼─┼─┼─┼─┼────┼───────────╢\n");
         s.push_str(&format!(
-            "\nCCR: X: {:} N: {:} Z: {:} V: {:} C: {:}",
+            "║ CCR  │{}│{}│{}│{}│{}│ PC │  {:08x} ║\n",
             self.ccr(CCR::X) as u8,
             self.ccr(CCR::N) as u8,
             self.ccr(CCR::Z) as u8,
             self.ccr(CCR::V) as u8,
-            self.ccr(CCR::C) as u8
+            self.ccr(CCR::C) as u8,
+            self.pc,
         ));
-        s.push_str(&format!("\nPC: {:08x}", self.prev));
+        s.push_str("╚══════╧═╧═╧═╧═╧═╧════╧═══════════╩\n");
         write!(f, "{}", s)
     }
 }
@@ -238,4 +254,95 @@ pub fn set_bit(bitfield: &mut usize, bit: usize, value: bool) {
 
 pub fn get_bit(bitfield: usize, bit: usize) -> bool {
     bitfield & (1 << bit) != 0
+}
+
+pub type DisassemblySection = VecDeque<(u32, Vec<u16>, String)>;
+
+pub struct Disassembly {
+    pub disassembly: DisassemblySection,
+    pub cursor: usize,
+    length: usize,
+}
+
+impl Disassembly {
+    pub fn new(lines: usize) -> Self {
+        Self { disassembly: VecDeque::with_capacity(lines), cursor: 0, length: lines }
+    }
+    pub fn update(&mut self, cpu: &mut CPU) {
+        if self.disassembly.is_empty() {
+            self.disassembly = cpu.disassemble(self.length);
+        }
+        let mut disassembled = HashMap::<u32, usize>::with_capacity(self.length);
+        for (j, line) in self.disassembly.iter().enumerate() {
+            disassembled.insert(line.0, j);
+        }
+        let mut jumped = false;
+        if cpu.jmp != self.disassembly[self.cursor].0 {
+            match disassembled.get(&cpu.jmp) {
+                Some(cursor) => {
+                    jumped = true;
+                    self.cursor = *cursor + 1;
+                }
+                None => self.cursor = 0,
+            }
+        }
+        if self.cursor == 0 {
+            self.disassembly = cpu.disassemble(self.length);
+        } else if (self.cursor >= self.length / 2 + 1) && !jumped {
+            let mut disassembly = cpu.disassemble(self.length - self.cursor + 1);
+            self.disassembly.pop_front();
+            self.disassembly.push_back(disassembly.pop_back().unwrap());
+        }
+        if self.cursor < self.length / 2 + 1 {
+            self.cursor += 1;
+        }
+    }
+}
+
+impl fmt::Display for Disassembly {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut result = String::new();
+        result.push_str(&format!(
+            "{r}══════════════════════════════════════════════════════════════════╗\n",
+            r = cursor::Goto(36, 2)
+        ));
+        result.push_str(&format!(
+            "{r} Next instructions                                                ║\n",
+            r = cursor::Goto(36, 3)
+        ));
+        result.push_str(&format!(
+            "{r}─────────┬──────────────────────┬─────────────────────────────────╢\n",
+            r = cursor::Goto(36, 4)
+        ));
+        for (j, line) in self.disassembly.iter().enumerate() {
+            let mut out = String::new();
+            for word in &line.1 {
+                out.push_str(&format!("{:04x} ", word));
+            }
+            if j + 1 == self.cursor {
+                result.push_str(&format!(
+                    "{r}{g}>{a:08x}{n}│{g}{o:<22}{n}│{g} {i:<32}{n}║\n",
+                    n = color::Fg(color::Reset),
+                    g = color::Fg(color::Green),
+                    o = out,
+                    i = line.2,
+                    a = line.0,
+                    r = cursor::Goto(36, (j + 5) as u16)
+                ));
+            } else {
+                result.push_str(&format!(
+                    "{r} {a:08x}│{b:<22}│ {i:<32}║\n",
+                    a = line.0,
+                    b = out,
+                    i = line.2,
+                    r = cursor::Goto(36, (j + 5) as u16)
+                ));
+            };
+        }
+        result.push_str(&format!(
+            "{r}═════════╧══════════════════════╧═════════════════════════════════╝\n",
+            r = cursor::Goto(36, (self.length + 5) as u16)
+        ));
+        write!(f, "{}", result)
+    }
 }

@@ -1,6 +1,6 @@
 // This is where the dirty grunt work of making sense of our binary input happens.
 
-use crate::fields::{Condition, EAMode, Size, OpMode};
+use crate::fields::{Condition, EAMode, OpMode, Size};
 use crate::instructions::ExtensionWord::*;
 use crate::instructions::Instruction::*;
 use crate::instructions::{ExtensionWord, Instruction};
@@ -197,7 +197,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         _RTE => return Some(RTE),
         _RTR => return Some(RTR),
         _RTS => return Some(RTS),
-        _STOP => return Some(STOP),
+        _STOP => return Some(STOP { extword: cpu.next_instruction() as u32 }),
         _TRAPV => return Some(TRAPV),
         _ => {}
     }
@@ -219,21 +219,23 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
     }
     // Specificity 10
     match split_instruction(opcode, vec![10, 3, 3]).as_slice() {
-        [_BCHGS, mode, earegister] => return Some(BCHGS { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
-        [_BCLRS, mode, earegister] => return Some(BCLRS { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
-        [_BSETS, mode, earegister] => return Some(BSETS { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
-        [_BTSTS, mode, earegister] => return Some(BTSTS { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
+        [_BCHGS, mode, earegister] => {
+            return Some(BCHGS { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu), extword: cpu.next_instruction() })
+        }
+        [_BCLRS, mode, earegister] => {
+            return Some(BCLRS { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu), extword: cpu.next_instruction() })
+        }
+        [_BSETS, mode, earegister] => {
+            return Some(BSETS { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu), extword: cpu.next_instruction() })
+        }
+        [_BTSTS, mode, earegister] => {
+            return Some(BTSTS { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu), extword: cpu.next_instruction() })
+        }
         [_JMP, mode, earegister] => return Some(JMP { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
         [_JSR, mode, earegister] => return Some(JSR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
-        [_MOVECCR, mode, earegister] => {
-            return Some(MOVECCR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) })
-        }
-        [_MOVEFROMSR, mode, earegister] => {
-            return Some(MOVEFROMSR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) })
-        }
-        [_MOVETOSR, mode, earegister] => {
-            return Some(MOVETOSR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) })
-        }
+        [_MOVECCR, mode, earegister] => return Some(MOVECCR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
+        [_MOVEFROMSR, mode, earegister] => return Some(MOVEFROMSR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
+        [_MOVETOSR, mode, earegister] => return Some(MOVETOSR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
         [_PEA, mode, earegister] => return Some(PEA { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
         [_TAS, mode, earegister] => return Some(TAS { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
         [_NBCD, mode, earegister] => return Some(NBCD { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
@@ -263,18 +265,28 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
     }
     match split_instruction(opcode, vec![4, 4, 5, 3]).as_slice() {
         [5, condition, _DBCC, register] if condition > &1 => {
-            return Some(DBCC { condition: Condition::from(*condition), register: *register })
+            return Some(DBCC {
+                condition: Condition::from(*condition),
+                register: *register,
+                displacement: cpu.next_instruction() as i16 as i32,
+            })
         }
         _ => {}
     }
     // FIXME: sort this elsewhere
     match split_instruction(opcode, vec![5, 1, 3, 1, 3, 3]).as_slice() {
         [_MOVEM, dr, 1, size, mode, earegister] => {
+            let mut register_mask = cpu.next_instruction();
+            let eamode = EAMode::from(Size::Byte, *mode, *earegister, cpu);
+            if eamode == EAMode::AddressPredecr(0, Size::Byte) {
+                register_mask = register_mask.reverse_bits();
+            }
             return Some(MOVEM {
                 size: Size::from_opcode(1 << (*size + 1)),
                 dr: *dr,
-                mode: EAMode::from(Size::Byte, *mode, *earegister, cpu),
-            })
+                mode: eamode,
+                register_mask: register_mask,
+            });
         }
         _ => {}
     }
@@ -285,13 +297,13 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
     }
     // Specificity 8
     match split_instruction(opcode, vec![8, 2, 3, 3]).as_slice() {
-        [_ADDI, size, mode, earegister] if size < &3 => { 
+        [_ADDI, size, mode, earegister] if size < &3 => {
             let instr_size = Size::from_opcode(*size);
             return Some(ADDI {
                 size: instr_size,
                 mode: EAMode::from(Size::from_opcode(*size), *mode, *earegister, cpu),
                 operand: cpu.immediate_operand(instr_size),
-            })
+            });
         }
         [_ANDI, size, mode, earegister] => {
             let instr_size = Size::from_opcode(*size);
@@ -299,7 +311,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
                 size: instr_size,
                 mode: EAMode::from(Size::from_opcode(*size), *mode, *earegister, cpu),
                 operand: cpu.immediate_operand(instr_size),
-            })
+            });
         }
         [_CLR, size, mode, earegister] => {
             return Some(CLR {
@@ -313,7 +325,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
                 size: instr_size,
                 mode: EAMode::from(Size::from_opcode(*size), *mode, *earegister, cpu),
                 operand: cpu.immediate_operand(instr_size),
-            })
+            });
         }
         [_EORI, size, mode, earegister] => {
             let instr_size = Size::from_opcode(*size);
@@ -321,7 +333,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
                 size: instr_size,
                 mode: EAMode::from(Size::from_opcode(*size), *mode, *earegister, cpu),
                 operand: cpu.immediate_operand(instr_size),
-            })
+            });
         }
         [_NEG, size, mode, earegister] => {
             return Some(NEG {
@@ -347,7 +359,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
                 size: instr_size,
                 mode: EAMode::from(Size::from_opcode(*size), *mode, *earegister, cpu),
                 operand: cpu.immediate_operand(instr_size),
-            })
+            });
         }
         [_SUBI, size, mode, earegister] => {
             let instr_size = Size::from_opcode(*size);
@@ -355,7 +367,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
                 size: instr_size,
                 mode: EAMode::from(Size::from_opcode(*size), *mode, *earegister, cpu),
                 operand: cpu.immediate_operand(instr_size),
-            })
+            });
         }
         [_TST, size, mode, earegister] => {
             return Some(TST {
@@ -366,8 +378,8 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         _ => {}
     }
     match split_instruction(opcode, vec![8, 8]).as_slice() {
-        [_BRA, displacement] => return Some(BRA { displacement: *displacement }),
-        [_BSR, displacement] => return Some(BSR { displacement: *displacement }),
+        [_BRA, displacement] => return Some(BRA { displacement: opt_displacement(*displacement, cpu) }),
+        [_BSR, displacement] => return Some(BSR { displacement: opt_displacement(*displacement, cpu) }),
         _ => {}
     }
     match split_instruction(opcode, vec![4, 3, 1, 2, 3, 3]).as_slice() {
@@ -375,12 +387,8 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         _ => {}
     }
     match split_instruction(opcode, vec![4, 3, 1, 2, 2, 1, 3]).as_slice() {
-        [_ADDX, rx, 1, size, 0, rm, ry] => {
-            return Some(ADDX { rx: *rx, ry: *ry, rm: *rm, size: Size::from_opcode(*size) })
-        }
-        [_SUBX, rx, 1, size, 0, rm, ry] => {
-            return Some(SUBX { rx: *rx, ry: *ry, rm: *rm, size: Size::from_opcode(*size) })
-        }
+        [_ADDX, rx, 1, size, 0, rm, ry] => return Some(ADDX { rx: *rx, ry: *ry, rm: *rm, size: Size::from_opcode(*size) }),
+        [_SUBX, rx, 1, size, 0, rm, ry] => return Some(SUBX { rx: *rx, ry: *ry, rm: *rm, size: Size::from_opcode(*size) }),
         _ => {}
     }
     // Specificity 7
@@ -413,7 +421,12 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
             return Some(MULU { register: *register, mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) })
         }
         [0x0, dregister, opmode, _MOVEP, aregister] if opmode > &4 => {
-            return Some(MOVEP { dregister: *dregister, opmode: *opmode, aregister: *aregister })
+            return Some(MOVEP {
+                dregister: *dregister,
+                opmode: *opmode,
+                aregister: *aregister,
+                displacement: cpu.next_instruction() as i16,
+            })
         }
         _ => {}
     }
@@ -429,22 +442,10 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
     }
     match split_instruction(opcode, vec![4, 3, 1, 2, 1, 2, 3]).as_slice() {
         [0xe, count, dr, size, ir, _ASLRREG, register] => {
-            return Some(ASLRREG {
-                register: *register,
-                count: *count,
-                size: Size::from_opcode(*size),
-                dr: *dr,
-                ir: *ir,
-            })
+            return Some(ASLRREG { register: *register, count: *count, size: Size::from_opcode(*size), dr: *dr, ir: *ir })
         }
         [0xe, count, dr, size, ir, _LSLRREG, register] => {
-            return Some(LSLRREG {
-                register: *register,
-                count: *count,
-                size: Size::from_opcode(*size),
-                dr: *dr,
-                ir: *ir,
-            })
+            return Some(LSLRREG { register: *register, count: *count, size: Size::from_opcode(*size), dr: *dr, ir: *ir })
         }
         [0xe, count, dr, size, ir, _ROXLR, register] => {
             return Some(ROXLR { register: *register, count: *count, size: Size::from_opcode(*size), dr: *dr, ir: *ir })
@@ -476,11 +477,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
     match split_instruction(opcode, vec![2, 2, 3, 3, 3, 3]).as_slice() {
         [_MOVEA, size, register, 1, mode, earegister] if size == &2 || size == &3 => {
             let opsize = Size::from_opcode(4 - *size);
-            return Some(MOVEA {
-                register: *register,
-                size: opsize,
-                mode: EAMode::from(opsize, *mode, *earegister, cpu),
-            });
+            return Some(MOVEA { register: *register, size: opsize, mode: EAMode::from(opsize, *mode, *earegister, cpu) });
         }
         _ => {}
     }
@@ -498,7 +495,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
     // Specificity 4
     match split_instruction(opcode, vec![4, 4, 8]).as_slice() {
         [_BCC, condition, displacement] if condition < &13 => {
-            return Some(BCC { condition: Condition::from(*condition), displacement: *displacement })
+            return Some(BCC { condition: Condition::from(*condition), displacement: opt_displacement(*displacement, cpu) })
         }
         _ => {}
     }
@@ -560,4 +557,13 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         _ => {}
     }
     None
+}
+
+fn opt_displacement(displ: usize, cpu: &mut CPU) -> i32 {
+    if displ == 0 {
+        let displacement_i16 = cpu.next_instruction() as i16;
+        displacement_i16 as i32 - 2
+    } else {
+        displ as i8 as i32
+    }
 }

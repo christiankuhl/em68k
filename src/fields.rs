@@ -6,10 +6,10 @@ use crate::conversions::Truncate;
 use crate::instructions::ExtensionWord;
 use crate::memory::MemoryHandle;
 use crate::parser::parse_extension_word;
-use crate::processor::{CCR, CPU, CCRFlags};
+use crate::processor::{CCRFlags, CCR, CPU};
 use std::cmp::PartialEq;
-use std::mem::discriminant;
 use std::fmt;
+use std::mem::discriminant;
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Size {
@@ -193,7 +193,7 @@ impl EAMode {
                         ExtensionWord::BEW { da, register: iregister, wl: _, scale, displacement } => {
                             Self::AddressIndex8Bit(earegister, iregister, (displacement & 0xff) as i8, size, scale, da)
                         }
-                        ExtensionWord::FEW { da, register: iregister, wl: _, scale, bs: _, is: _, bdsize: _, iis: _,} => {
+                        ExtensionWord::FEW { da, register: iregister, wl: _, scale, bs: _, is: _, bdsize: _, iis: _ } => {
                             let mut displacement: u32 = 0;
                             let (bdsize, _) = extword.remaining_length();
                             for j in 0..bdsize {
@@ -209,25 +209,21 @@ impl EAMode {
             7 => {
                 let extword = cpu.next_instruction();
                 match earegister {
-                    0 => {
-                        Self::AbsoluteShort(extword as i16 as usize)
-                    },
+                    0 => Self::AbsoluteShort(extword as i16 as usize),
                     1 => {
                         let extword2 = cpu.next_instruction();
                         let mut ptr = extword2 as usize;
                         ptr += (extword as usize) << 16;
                         Self::AbsoluteLong(ptr)
                     }
-                    2 => {
-                        Self::PCDisplacement(extword as i16 as i32)
-                    },
+                    2 => Self::PCDisplacement(extword as i16 as i32),
                     3 => {
                         if let Some(extword) = parse_extension_word(extword) {
                             match extword {
                                 ExtensionWord::BEW { da, register, wl: _, scale, displacement } => {
                                     Self::PCIndex8Bit(register, (displacement & 0xff) as i8, size, scale, da)
                                 }
-                                ExtensionWord::FEW { da, register, wl: _, scale, bs: _, is: _, bdsize: _, iis: _,} => {
+                                ExtensionWord::FEW { da, register, wl: _, scale, bs: _, is: _, bdsize: _, iis: _ } => {
                                     let mut displacement: u32 = 0;
                                     let (bdsize, _) = extword.remaining_length();
                                     for j in 0..bdsize {
@@ -239,7 +235,7 @@ impl EAMode {
                         } else {
                             panic!("Invalid extension word!")
                         }
-                    },
+                    }
                     4 => {
                         let data = match size {
                             Size::Byte => OpResult::Byte((extword & 0xff) as u8),
@@ -370,9 +366,7 @@ impl Condition {
                 (cpu.ccr(CCR::N) && cpu.ccr(CCR::V) && !cpu.ccr(CCR::Z))
                     || (!cpu.ccr(CCR::N) && !cpu.ccr(CCR::V) && !cpu.ccr(CCR::Z))
             }
-            Self::LE => {
-                cpu.ccr(CCR::Z) || (cpu.ccr(CCR::N) && !cpu.ccr(CCR::V)) || (!cpu.ccr(CCR::N) && cpu.ccr(CCR::V))
-            }
+            Self::LE => cpu.ccr(CCR::Z) || (cpu.ccr(CCR::N) && !cpu.ccr(CCR::V)) || (!cpu.ccr(CCR::N) && cpu.ccr(CCR::V)),
         }
     }
 }
@@ -387,25 +381,21 @@ pub enum BitMode {
 #[derive(Copy, Clone)]
 pub enum OpMode {
     MemoryToRegister(Size),
-    RegisterToMemory(Size)
+    RegisterToMemory(Size),
 }
 
 impl OpMode {
     pub fn from_opcode(opmode: usize) -> Self {
         let size = Size::from_opcode(opmode % 4);
         match opmode >> 2 {
-            0 => {
-                Self::MemoryToRegister(size)
-            }
-            1 => {
-                Self::RegisterToMemory(size)
-            }
-            _ => panic!("Invalid opmode!")
+            0 => Self::MemoryToRegister(size),
+            1 => Self::RegisterToMemory(size),
+            _ => panic!("Invalid opmode!"),
         }
     }
     pub fn size(&self) -> Size {
         match *self {
-            Self::MemoryToRegister(size) | Self::RegisterToMemory(size) => size
+            Self::MemoryToRegister(size) | Self::RegisterToMemory(size) => size,
         }
     }
     pub fn write(&self, reghandle: MemoryHandle, memhandle: MemoryHandle, result: OpResult) {
@@ -421,12 +411,14 @@ pub struct PackedBCD(pub u8);
 impl PackedBCD {
     pub fn from(res: OpResult) -> Self {
         match res {
-            OpResult::Byte(b) => { 
+            OpResult::Byte(b) => {
                 let value = (b & 0xf) + 10 * (b & 0xf0 >> 4);
-                if value > 9 { panic!("Invalid BCD encoding!") };
+                if value > 9 {
+                    panic!("Invalid BCD encoding!")
+                };
                 Self(value)
             }
-            _ => panic!("Unsupported operation!")
+            _ => panic!("Unsupported operation!"),
         }
     }
     pub fn pack(&self) -> OpResult {

@@ -1,5 +1,5 @@
+use crate::fields::{OpResult, Size};
 use crate::processor::CPU;
-use crate::fields::{Size, OpResult};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -26,12 +26,9 @@ impl MemoryHandle {
                 match size {
                     Size::Byte => OpResult::Byte(raw_mem[ptr]),
                     Size::Word => OpResult::Word(u16::from_be_bytes([raw_mem[ptr], raw_mem[ptr + 1]])),
-                    Size::Long => OpResult::Long(u32::from_be_bytes([
-                        raw_mem[ptr],
-                        raw_mem[ptr + 1],
-                        raw_mem[ptr + 2],
-                        raw_mem[ptr + 3],
-                    ]))
+                    Size::Long => {
+                        OpResult::Long(u32::from_be_bytes([raw_mem[ptr], raw_mem[ptr + 1], raw_mem[ptr + 2], raw_mem[ptr + 3]]))
+                    }
                 }
             } else {
                 panic!("Invalid memory handle!")

@@ -1,45 +1,35 @@
-use crate::processor::CPU;
 use crate::memory::{RamPtr, RAM_SIZE};
+use crate::processor::{Disassembly, CPU};
 use std::cell::RefCell;
+use std::io::{stdin, stdout};
 use std::rc::Rc;
-
-use tui::Terminal;
-use tui::backend::TermionBackend;
-use tui::widgets::{Widget, Block, Borders};
-// use tui::layout::{Layout, Constraint, Direction};
-// use termion::event::{Key, Event};
-// use termion::input::TermRead;
-
-use termion::event::{Key, Event, MouseEvent};
-use termion::input::{TermRead, MouseTerminal};
+use termion::event::{Event, Key, MouseEvent};
+use termion::input::{MouseTerminal, TermRead};
 use termion::raw::IntoRawMode;
-use std::io::{Write, stdout, stdin};
-
+use termion::{clear, cursor};
 
 pub type DeviceList = Vec<Box<dyn Device>>;
 
+pub enum Signal {
+    Ok,
+    Quit,
+    Attach(Box<dyn Device>),
+    Detach,
+}
+
 pub trait Device {
     fn init(&mut self, ram: RamPtr);
-    fn update(&mut self, cpu: &mut CPU);
+    fn update(&mut self, cpu: &mut CPU) -> Signal;
 }
 
 pub struct Debugger {
     ram: RamPtr,
-    // stdout: termion::raw::RawTerminal<std::io::Stdout>,
-    // backend: tui::backend::TermionBackend<termion::raw::RawTerminal<std::io::Stdout>>,
-    // terminal: tui::Terminal<tui::backend::TermionBackend<termion::raw::RawTerminal<std::io::Stdout>>>,
+    disassembly: Disassembly,
 }
 
 impl Debugger {
     pub fn new() -> Box<Self> {
-        // let stdout = stdout().into_raw_mode().unwrap();
-        // let backend = TermionBackend::new(stdout);
-        // let mut terminal = Terminal::new(backend).unwrap();
-        // terminal.clear().expect("Terminal clear failed.");
-        Box::new(Debugger { 
-            ram: Rc::new(RefCell::new([0; RAM_SIZE])),
-            // terminal: terminal,
-        })
+        Box::new(Debugger { ram: Rc::new(RefCell::new([0; RAM_SIZE])), disassembly: Disassembly::new(12) })
     }
 }
 
@@ -47,50 +37,28 @@ impl Device for Debugger {
     fn init(&mut self, ram: RamPtr) {
         self.ram = ram;
     }
-    fn update(&mut self, cpu: &mut CPU) {
-        // self.terminal.draw(|f| {
-        //     let size = f.size();
-        //     let block = Block::default()
-        //         .title("Block")
-        //         .borders(Borders::ALL);
-        //     f.render_widget(block, size);
-        // }).expect("UI draw failed!");
-
-        write!(stdout(), "{:?}\n\n", cpu);
-        write!(stdout(), "{:}\n\n", cpu.nxt.as_asm(cpu));
-
-        for line in cpu.disassemble() {
-            let mut out = format!("{:08x} ", line.0);
-            for word in line.1 {
-                out.push_str(&format!("{:04x} ", word));
-            }
-            write!(stdout(), "{:<30}{}\n", out, line.2);
-        }
-        stdout().flush().unwrap();
-        pause();
-    }
-}
-
-fn pause() {
-    let stdin = stdin();
-    let mut stdout = MouseTerminal::from(stdout().into_raw_mode().unwrap());
-
-    for c in stdin.events() {
-        let evt = c.unwrap();
-        match evt {
-            Event::Key(Key::Char(' ')) => break,
-            Event::Key(Key::Char('q')) => panic!(),
-            Event::Mouse(me) => {
-                match me {
+    fn update(&mut self, cpu: &mut CPU) -> Signal {
+        self.disassembly.update(cpu);
+        print!("{c}{tl}{cpu}", c = clear::All, tl = cursor::Goto(1, 1), cpu = cpu);
+        print!("{tr}{dis}", tr = cursor::Goto(10, 10), dis = self.disassembly);
+        println!("\nDebugger attached. Press space to single step or q to quit.");
+        let stdin = stdin();
+        let mut _stdout = MouseTerminal::from(stdout().into_raw_mode().unwrap());
+        for c in stdin.events() {
+            let evt = c.unwrap();
+            match evt {
+                Event::Key(Key::Char(' ')) => break,
+                Event::Key(Key::Char('q')) => return Signal::Quit,
+                Event::Mouse(me) => match me {
                     MouseEvent::Press(_, x, y) => {
-                        write!(stdout, "{}x", termion::cursor::Goto(x, y)).unwrap();
-                    },
+                        println!("{}x", termion::cursor::Goto(x, y));
+                    }
                     _ => (),
-                }
+                },
+                _ => {}
             }
-            _ => {}
         }
-        stdout.flush().unwrap();
+        println!("{}", clear::All);
+        Signal::Ok
     }
-    write!(stdout, "{}", termion::clear::All);
 }

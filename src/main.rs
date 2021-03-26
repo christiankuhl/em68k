@@ -8,9 +8,9 @@ mod processor;
 use memory::{RamPtr, RAM_SIZE};
 use processor::CPU;
 mod conversions;
-mod fields;
 mod devices;
-use devices::{DeviceList, Debugger};
+mod fields;
+use devices::{Debugger, DeviceList, Signal};
 
 pub struct Emulator {
     cpu: CPU,
@@ -21,10 +21,26 @@ pub struct Emulator {
 impl Emulator {
     pub fn run(&mut self, program: &str) {
         self.initialize(program);
+        let mut detached = Vec::new();
+        let mut attached = DeviceList::new();
         loop {
             self.cpu.clock_cycle();
-            for device in self.devices.iter_mut() {
-                device.update(&mut self.cpu);
+            for (j, device) in self.devices.iter_mut().enumerate() {
+                match device.update(&mut self.cpu) {
+                    Signal::Quit => return,
+                    Signal::Attach(mut new_device) => {
+                        new_device.init(Rc::clone(&self.ram));
+                        attached.push(new_device)
+                    }
+                    Signal::Detach => detached.push(j),
+                    Signal::Ok => (),
+                };
+            }
+            for j in detached.drain(0..) {
+                self.devices.remove(j);
+            }
+            for device in attached.drain(0..) {
+                self.devices.push(device);
             }
         }
     }
@@ -68,7 +84,7 @@ impl Emulator {
     }
 }
 
-fn main() {    
+fn main() {
     let mut dev = DeviceList::new();
     dev.push(Debugger::new());
     let mut em = Emulator::new(dev);
