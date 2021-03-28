@@ -61,6 +61,9 @@ pub enum Instruction {
     CMPM { ax: usize, ay: usize, size: Size },
     ADDX { rx: usize, ry: usize, rm: usize, size: Size },
     SUBX { rx: usize, ry: usize, rm: usize, size: Size },
+    ADDA { register: usize, opmode: usize, mode: EAMode },
+    SUBA { register: usize, opmode: usize, mode: EAMode },
+    CMPA { register: usize, opmode: usize, mode: EAMode },
     BCHG { register: usize, mode: EAMode },
     BCLR { register: usize, mode: EAMode },
     BSET { register: usize, mode: EAMode },
@@ -262,7 +265,7 @@ impl Instruction {
             }
             Self::JMP { mode } => {
                 let addr = cpu.memory_address(mode);
-                cpu.pc = addr - 2;
+                cpu.pc = addr;
             }
             Self::JSR { mode } => {
                 cpu.pc = cpu.memory_address(mode) - 2;
@@ -543,7 +546,7 @@ impl Instruction {
                 ccr.c = Some(false);
                 ccr.set(cpu);
             }
-            Self::BRA { displacement } => cpu.pc = (cpu.pc as i32 + displacement - 2) as u32 + 2,
+            Self::BRA { displacement } => cpu.pc = (cpu.pc as i32 + displacement) as u32,
             Self::BSR { displacement } => {
                 let pc = (cpu.pc as i32 + displacement) as u32;
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
@@ -600,6 +603,42 @@ impl Instruction {
                 let res = dest.read(size).sub(operand);
                 let ccr = res.1;
                 dest.write(res.0);
+                ccr.set(cpu);
+            }
+            Self::ADDA { register, opmode, mode } => {
+                let size = Size::from_opcode(opmode / 4 + 1);
+                let operand = cpu.memory_handle(mode).read(size);
+                let mut reg = cpu.ar[register].as_ref().borrow_mut();
+                match operand {
+                    OpResult::Word(w) => {
+                        let addr = w as i16 as i32;
+                        *reg = (*reg as i32 + addr) as u32;
+                    }
+                    OpResult::Long(l) => *reg = (*reg as i32 + l as i32) as u32,
+                    OpResult::Byte(_) => {}
+                }
+            }
+            Self::SUBA { register, opmode, mode } => {
+                let size = Size::from_opcode(opmode / 4 + 1);
+                let operand = cpu.memory_handle(mode).read(size);
+                let mut reg = cpu.ar[register].as_ref().borrow_mut();
+                match operand {
+                    OpResult::Word(w) => {
+                        let addr = w as i16 as i32;
+                        *reg = (*reg as i32 - addr) as u32;
+                    }
+                    OpResult::Long(l) => *reg = (*reg as i32 - l as i32) as u32,
+                    OpResult::Byte(_) => {}
+                }
+            }
+            Self::CMPA { register, opmode, mode } => {
+                let size = Size::from_opcode(opmode / 4 + 1);
+                let arhandle = cpu.memory_handle(AddressDirect(register));
+                let ophandle = cpu.memory_handle(mode);
+                let ar = arhandle.read(Long);
+                let op = ophandle.read(size).sign_extend() as u32;
+                let res = ar.sub(OpResult::Long(op));
+                let ccr = res.1;
                 ccr.set(cpu);
             }
             Self::BCHG { register, mode } => {
@@ -663,9 +702,8 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::LEA { register, mode } => {
-                let addr = cpu.memory_handle(mode).read(Long).inner();
-                let mut addrreg = cpu.ar[register].as_ref().borrow_mut();
-                *addrreg = addr;
+                let addr = cpu.memory_address(mode) - 2;
+                cpu.ar[register].replace(addr);
             }
             Self::MULS { register, mode } => {
                 let src = cpu.memory_handle(mode);
@@ -1021,6 +1059,18 @@ impl Instruction {
                     format!("subx.{} -(a{}),-(a{})", size, ry, rx)
                 }
             }
+            Self::ADDA { register, opmode, mode } => {
+                let size = Size::from_opcode(opmode / 4 + 1);
+                format!("adda.{} {},a{}", size, mode, register)
+            }
+            Self::SUBA { register, opmode, mode } => {
+                let size = Size::from_opcode(opmode / 4 + 1);
+                format!("suba.{} {},a{}", size, mode, register)
+            }
+            Self::CMPA { register, opmode, mode } => {
+                let size = Size::from_opcode(opmode / 4 + 1);
+                format!("cmpa.{} {},a{}", size, mode, register)
+            }
             Self::BCHG { register, mode } => format!("bchg d{},{}", register, mode),
             Self::BCLR { register, mode } => format!("bclr d{},{}", register, mode),
             Self::BSET { register, mode } => format!("bset d{},{}", register, mode),
@@ -1116,18 +1166,16 @@ fn privilege_violation(cpu: &mut CPU) {
 fn change_bit(mode: EAMode, register: Option<usize>, extword: Option<u16>, cpu: &mut CPU, opmode: BitMode) {
     let bitnumber_word =
         if register == None { extword.unwrap() as usize } else { *cpu.dr[register.unwrap()].borrow() as usize };
-    let handle: MemoryHandle;
     let bitnumber;
     let size;
     if mode == DataDirect(0) {
-        handle = cpu.memory_handle(mode);
         bitnumber = bitnumber_word % 32;
         size = Long;
     } else {
-        handle = cpu.memory_handle(mode);
         bitnumber = bitnumber_word % 8;
         size = Byte;
     }
+    let handle = cpu.memory_handle(mode);
     let mut bitfield = handle.read(size).inner() as usize;
     let mut value = get_bit(bitfield as usize, bitnumber);
     let mut ccr = CCRFlags::new();
@@ -1328,7 +1376,7 @@ fn roxlr(handle: MemoryHandle, size: Size, shift_count: usize, dr: usize, cpu: &
 
 fn shift_count(ir: usize, count: usize, cpu: &CPU) -> usize {
     if ir == 0 {
-        ((count - 1) % 8) + 1
+        (((count as isize - 1) % 8) + 1) as usize
     } else {
         (*cpu.dr[count].as_ref().borrow() % 64) as usize
     }
@@ -1336,7 +1384,7 @@ fn shift_count(ir: usize, count: usize, cpu: &CPU) -> usize {
 
 fn shift_mode_asm(ir: usize, count: usize) -> String {
     if ir == 0 {
-        format!("{}", ((count - 1) % 8) + 1)
+        format!("{}", ((count as isize - 1) % 8) + 1)
     } else {
         format!("d{}", count)
     }

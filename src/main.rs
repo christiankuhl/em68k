@@ -9,8 +9,11 @@ use memory::{RamPtr, RAM_SIZE};
 use processor::CPU;
 mod conversions;
 mod devices;
-mod fields;
 use devices::{Debugger, DeviceList, Signal, ASMStream};
+mod fields;
+use fields::EAMode;
+mod atari;
+use atari::*;
 
 pub struct Emulator {
     cpu: CPU,
@@ -49,16 +52,22 @@ impl Emulator {
     }
     fn initialize(&mut self, progname: &str) {
         let program = fs::read(progname).expect("Program does not exist!");
-        let mut raw_mem = self.ram.as_ref().borrow_mut();
-        for (j, &b) in program.iter().enumerate() {
-            raw_mem[j + 0xfc0000] = b;
+        {
+            let mut raw_mem = self.ram.as_ref().borrow_mut();
+            for (j, &b) in program.iter().enumerate() {
+                raw_mem[j + BASE_ADDRESS as usize] = b;
+            }
         }
-        self.cpu.pc = 0xfc0030;
-        self.cpu.ssp.replace(0x602e0104);
+        self.cpu.pc = START_ADDRESS;
+        // self.cpu.ssp.replace();
         self.cpu.supervisor_mode(true);
+        for (addr, val) in MEMORY_LAYOUT.iter() {
+            let handle = self.cpu.memory_handle(EAMode::AbsoluteLong(*addr));
+            handle.write(*val);
+        }
     }
     pub fn new(mut devices: DeviceList) -> Emulator {
-        let ram = RamPtr::new(RefCell::new([0u8; RAM_SIZE]));
+        let ram = RamPtr::new(RefCell::new(vec![0u8; RAM_SIZE]));
         let ar = [
             Rc::new(RefCell::new(0)),
             Rc::new(RefCell::new(0)),
@@ -67,7 +76,7 @@ impl Emulator {
             Rc::new(RefCell::new(0)),
             Rc::new(RefCell::new(0)),
             Rc::new(RefCell::new(0)),
-            Rc::new(RefCell::new(0x602e0104)),
+            Rc::new(RefCell::new(0x0104)),
         ];
         let dr = [
             Rc::new(RefCell::new(0)),
@@ -90,8 +99,9 @@ impl Emulator {
 
 fn main() {
     let mut dev = DeviceList::new();
-    // dev.push(Debugger::new());
-    dev.push(Box::new(ASMStream));
+    dev.push(Debugger::new());
+    // dev.push(Box::new(ASMStream));
     let mut em = Emulator::new(dev);
-    em.run("tos/tos106de.img");
+    // em.run("examples/strtolower.bin");
+    em.run("tos/TOS104GE.IMG");
 }

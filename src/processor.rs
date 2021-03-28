@@ -86,9 +86,9 @@ impl CPU {
             self.nxt = instruction;
             Signal::Ok
         } else {
-            panic!("Illegal instruction!");
-            // self.nxt = Instruction::NOP;
-            // Signal::Ok
+            // panic!("Illegal instruction!");
+            self.nxt = Instruction::NOP;
+            Signal::Ok
         }
     }
     pub fn next_instruction(&mut self) -> u16 {
@@ -123,7 +123,7 @@ impl CPU {
                 MemoryHandle::new(None, Some(ptr), None, self)
             }
             EAMode::AddressDisplacement(register, displacement) => {
-                let ptr = (*self.ar[register].borrow() + displacement as u32) as usize;
+                let ptr = (*self.ar[register].borrow() as i32 + displacement as i32) as u32 as usize;
                 MemoryHandle::new(None, Some(ptr), None, self)
             }
             EAMode::AddressIndex8Bit(register, iregister, displacement, size, scale, da) => {
@@ -153,6 +153,22 @@ impl CPU {
             EAMode::AbsoluteShort(ptr) => MemoryHandle::new(None, Some(ptr), None, self),
             EAMode::AbsoluteLong(ptr) => MemoryHandle::new(None, Some(ptr), None, self),
             EAMode::Immediate(data) => MemoryHandle::new(None, None, Some(data), self),
+            EAMode::PCIndex8Bit(iregister, displacement, size, scale, da) => {
+                let index_handle = if da == 0 {
+                    self.memory_handle(EAMode::DataDirect(iregister))
+                } else {
+                    self.memory_handle(EAMode::AddressDirect(iregister))
+                };
+                let mut ptr = index_handle.read(size).sign_extend() as i32;
+                ptr *= 1 << scale;
+                ptr += displacement as i32;
+                ptr += self.pc as i32;
+                MemoryHandle::new(None, Some(ptr as usize), None, self)
+            }
+            EAMode::PCDisplacement(displacement) => {
+                let ptr = (self.pc as i32 + displacement as i32 - 2) as usize;
+                MemoryHandle::new(None, Some(ptr), None, self)
+            }
             _ => panic!("Invalid addressing mode!"),
         }
     }
@@ -165,7 +181,7 @@ impl CPU {
         self.ccr(CCR::S)
     }
     pub fn lookahead(&self, offset: isize) -> u16 {
-        let raw_mem = *self.ram.borrow();
+        let raw_mem = self.ram.borrow();
         let ptr = (self.pc as isize + 2 * offset) as usize;
         u16::from_be_bytes([raw_mem[ptr], raw_mem[ptr + 1]])
     }
@@ -268,7 +284,7 @@ pub type DisassemblySection = VecDeque<(u32, Vec<u16>, String)>;
 pub struct Disassembly {
     pub disassembly: DisassemblySection,
     pub cursor: usize,
-    length: usize,
+    pub length: usize,
 }
 
 impl Disassembly {
@@ -314,15 +330,15 @@ impl fmt::Display for Disassembly {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut result = String::new();
         result.push_str(&format!(
-            "{r}══════════════════════════════════════════════════════════════════╗\n",
+            "{r}═════════════════════════════════════════════════════════════════════╗\n",
             r = cursor::Goto(36, 2)
         ));
         result.push_str(&format!(
-            "{r} Next instructions                                                ║\n",
+            "{r} Next instructions                                                   ║\n",
             r = cursor::Goto(36, 3)
         ));
         result.push_str(&format!(
-            "{r}─────────┬──────────────────────┬─────────────────────────────────╢\n",
+            "{r}─────────┬─────────────────────────┬─────────────────────────────────╢\n",
             r = cursor::Goto(36, 4)
         ));
         for (j, line) in self.disassembly.iter().enumerate() {
@@ -332,7 +348,7 @@ impl fmt::Display for Disassembly {
             }
             if j + 1 == self.cursor {
                 result.push_str(&format!(
-                    "{r}{g}>{a:08x}{n}│{g}{o:<22}{n}│{g} {i:<32}{n}║\n",
+                    "{r}{g}>{a:08x}{n}│{g}{o:<25}{n}│{g} {i:<32}{n}║\n",
                     n = color::Fg(color::Reset),
                     g = color::Fg(color::Green),
                     o = out,
@@ -342,7 +358,7 @@ impl fmt::Display for Disassembly {
                 ));
             } else {
                 result.push_str(&format!(
-                    "{r} {a:08x}│{b:<22}│ {i:<32}║\n",
+                    "{r} {a:08x}│{b:<25}│ {i:<32}║\n",
                     a = line.0,
                     b = out,
                     i = line.2,
@@ -351,7 +367,7 @@ impl fmt::Display for Disassembly {
             };
         }
         result.push_str(&format!(
-            "{r}═════════╧══════════════════════╧═════════════════════════════════╝\n",
+            "{r}═════════╧═════════════════════════╧═════════════════════════════════╝\n",
             r = cursor::Goto(36, (self.length + 5) as u16)
         ));
         write!(f, "{}", result)

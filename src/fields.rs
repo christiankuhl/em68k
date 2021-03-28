@@ -159,6 +159,10 @@ pub enum EAMode {
     AddressIndex8Bit(usize, usize, i8, Size, usize, usize),
     // Address Register Indirect with Index (Base Displacement) Mode
     AddressIndexBase(usize, usize, i32, Size, usize, usize),
+    // Memory Indirect Postindexed Mode
+    MemoryIndirectPostindexed, // ([bd,An],Xn.SIZE*SCALE,od)
+    // Memory Indirect Postindexed Mode
+    MemoryIndirectPreindexed,
     // Absolute Short Addressing Mode
     AbsoluteShort(usize),
     // Absolute Long Addressing Mode
@@ -170,9 +174,9 @@ pub enum EAMode {
     // Program Counter Indirect with Index (Base Displacement) Mode
     PCIndexBase(usize, i32, Size, usize, usize),
     // Program Counter Memory Indirect Postindexed Mode
-    PCPostindexed,
+    PCIndirectPostindexed, 
     // Program Counter Memory Indirect Preindexed Mode
-    PCPreindexed,
+    PCIndirectPreindexed,
     // Immediate Data
     Immediate(OpResult),
 }
@@ -190,14 +194,14 @@ impl EAMode {
                 let opcode = cpu.next_instruction();
                 if let Some(extword) = parse_extension_word(opcode) {
                     match extword {
-                        ExtensionWord::BEW { da, register: iregister, wl: _, scale, displacement } => {
+                        ExtensionWord::BEW { da, register: iregister, wl: wl, scale, displacement } => {
                             Self::AddressIndex8Bit(earegister, iregister, (displacement & 0xff) as i8, size, scale, da)
                         }
-                        ExtensionWord::FEW { da, register: iregister, wl: _, scale, bs: _, is: _, bdsize: _, iis: _ } => {
+                        ExtensionWord::FEW { da, register: iregister, wl: wl, scale, bs: bs, is: is, bdsize: bdsize, iis: iis } => {
                             let mut displacement: u32 = 0;
                             let (bdsize, _) = extword.remaining_length();
                             for j in 0..bdsize {
-                                displacement += (cpu.next_instruction() * (1 << (8 * (bdsize - j - 1)))) as u32;
+                                displacement += ((cpu.next_instruction() as u32) * (1 << (8 * (bdsize - j - 1)))) as u32;
                             }
                             Self::AddressIndexBase(earegister, iregister, displacement as i32, size, scale, da)
                         }
@@ -260,7 +264,7 @@ impl EAMode {
             Self::AddressIndirect(earegister) => format!("(a{:})", earegister),
             Self::AddressPostincr(earegister, _) => format!("(a{:})+", earegister),
             Self::AddressPredecr(earegister, _) => format!("-(a{:})", earegister),
-            Self::AddressDisplacement(earegister, displacement) => format!("{:x}(a{:})", displacement, earegister),
+            Self::AddressDisplacement(earegister, displacement) => format!("{:-x}(a{:})", SignedForDisplay(displacement), earegister),
             Self::AddressIndex8Bit(earegister, iregister, displacement, size, scale, da) => {
                 let da_flag = if da == 0 { "d" } else { "a" };
                 format!("({:x}a{:},{:}{:}.{:}*{:})", displacement, earegister, da_flag, iregister, size.as_asm(), scale)
@@ -271,7 +275,7 @@ impl EAMode {
             }
             Self::AbsoluteShort(ptr) => format!("({:04x}).w", ptr),
             Self::AbsoluteLong(ptr) => format!("({:08x}).w", ptr),
-            Self::PCDisplacement(ptr) => format!("({:04x},pc", ptr),
+            Self::PCDisplacement(displ) => format!("({:04x},pc)", SignedForDisplay(displ)),
             Self::Immediate(data) => format!("#{:}", data),
             _ => panic!("Not implemented yet!"),
         }
@@ -456,5 +460,23 @@ impl fmt::Display for Condition {
 impl fmt::Display for Size {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.as_asm())
+    }
+}
+
+struct SignedForDisplay<T>(T);
+
+impl fmt::LowerHex for SignedForDisplay<i32> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let prefix = if f.alternate() { "0x" } else { "" };
+        let bare_hex = format!("{:x}", self.0.abs());
+        f.pad_integral(self.0 >= 0, prefix, &bare_hex)
+    }
+}
+
+impl fmt::LowerHex for SignedForDisplay<i16> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let prefix = if f.alternate() { "0x" } else { "" };
+        let bare_hex = format!("{:x}", self.0.abs());
+        f.pad_integral(self.0 >= 0, prefix, &bare_hex)
     }
 }

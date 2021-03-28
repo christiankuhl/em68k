@@ -1,5 +1,46 @@
-// Initial Memory Layout Atari ST
+use crate::fields::{OpResult, OpResult::*};
 
+pub const BASE_ADDRESS: u32 = 0xfc0000;
+pub const START_ADDRESS: u32 = 0xfc0030;
+
+// Initial Memory Layout Atari ST
+pub const MEMORY_LAYOUT: [(usize, OpResult); 12] = [
+    //   $000.L      Reset initial SSP value
+    (0x0, Long(0x0104)),
+    //   $004.L      Reset initial PC address
+    (0x0, Long(START_ADDRESS)),
+    //   $028.L      Line 1010 (Line A routine)
+    // Line A emulator $EB9A
+    (0x28, Long(0xeb9a)),
+    //   $068.L      Interrupt level 2 (Hblank sync)
+    // Level 2 interrupt $543C
+    (0x68, Long(0x543c)),
+    //   $070.L      Interrupt level 4 (Vblank sync)
+    // Level 4 interrupt $5452
+    (0x80, Long(0x5452)),
+    //   $420.L      Memvalid (Cold start OK if #$752019F3)
+    (0x420, Long(0x752019f3)),
+    //   $424.B      Memcntlr (Memory controller low nibble)
+    (0x424, Byte(0x0)),
+    //   $426.L      Resvalid (#$31415926 to jump through 'resvector')
+    (0x426, Long(0x0)),
+    //   $42A.L      Resvector (System reset bailout vector)
+    (0x42a, Long(START_ADDRESS)),
+    //   $42E.L      Phystop (Physical RAM top)
+    (0x42e, Long(0x4000000)),
+    //   $43A.L      Memval2 (#$237698AA)
+    (0x43a, Long(0x237698aa)),
+    //   $51A.L      Memval3 (#$5555AAAA)
+    (0x51a, Long(0x5555aaaa)),
+];
+    
+    // Set trap vectors:
+    // TRAP #1 GEMDOS $965E
+    // TRAP #2 GEM $2A338
+    // TRAP #13 BIOS $556C
+    // TRAP #14 XBIOS $5566
+    
+    
 //   $000.L      Reset initial SSP value
 //   $004.L      Reset initial PC address
 //   $008.L      Bus error
@@ -10,7 +51,6 @@
 //   $01C.L      Trapv instruction
 //   $020.L      Privilege violation
 //   $024.L      Trace mode
-//   $028.L      Line 1010 (Line A routine)
 //   $02C.L      Line 1111 (Used by AES)
 //   $030.L      Unassigned
 //   $034.L      Coprocessor protocol violation (for MC68020)
@@ -26,10 +66,8 @@
 //   $05C.L      Unassigned
 //   $060.L      Spurious interrupt (Hacked to level 3)
 //   $064.L      Interrupt level 1 (Used when user wants Hblanks)
-//   $068.L      Interrupt level 2 (Hblank sync)
 //   $06C.L      Interrupt level 3 (Normal processor interrupt
 //                                  level)
-//   $070.L      Interrupt level 4 (Vblank sync)
 //   $074.L      Interrupt level 5
 //   $078.L      Interrupt level 6 (MK68901 MFP Interrupts)
 //   $07C.L      Interrupt level 7 (NMI)
@@ -124,15 +162,14 @@
 //   $414.L      Etv_xtra
 //   $418.L      Etv_xtra
 //   $41C.L      Etv_xtra
-//   $420.L      Memvalid (Cold start OK if #$752019F3)
+
 //   $424.B      Memcntlr (Memory controller low nibble)
 //   $425.B      Unassigned
-//   $426.L      Resvalid (#$31415926 to jump through 'resvector')
-//   $42A.L      Resvector (System reset bailout vector)
-//   $42E.L      Phystop (Physical RAM top)
+
+
 //   $432.L      _Membot (Available memory bottom)
 //   $436.L      _Memtop (Available memory top)
-//   $43A.L      Memval2 (#$237698AA)
+
 //   $43E.W      Flock (Floppy FIFO lock variable)
 //   $440.W      Seekrate (Floppy seekrate)
 //   $442.W      _Timr_ms (System timer calibration)

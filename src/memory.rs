@@ -3,10 +3,10 @@ use crate::processor::CPU;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub const RAM_SIZE: usize = 1 << 24;
+pub const RAM_SIZE: usize = 1 << 34;
 
-pub type RamPtr = Rc<RefCell<[u8; RAM_SIZE]>>;
-pub type RegPtr = Rc<RefCell<u32>>;
+pub type RamPtr = Rc<RefCell<Vec<u8>>>;
+pub type RegPtr = Rc<RefCell<u32>>; 
 
 pub struct MemoryHandle {
     reg: Option<RegPtr>,
