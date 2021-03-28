@@ -39,7 +39,7 @@ impl Emulator {
                         attached.push(new_device)
                     }
                     Signal::Detach => detached.push(j),
-                    Signal::Ok => (),
+                    Signal::Ok | Signal::NoOp=> (),
                 };
             }
             for j in detached.drain(0..) {

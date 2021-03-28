@@ -8,7 +8,7 @@ use crate::instructions::Instruction;
 use crate::memory::{MemoryHandle, RamPtr, RegPtr};
 use crate::parser::parse_instruction;
 use crate::devices::Signal;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::rc::Rc;
 use termion::{color, cursor};
@@ -21,7 +21,7 @@ pub struct CPU {
     pub ssp: RegPtr,      // Supervisory stack pointer
     pub ram: RamPtr,      // Pointer to RAM
     pub nxt: Instruction, // Next instruction (debugger)
-    prev: u32,            // Last program counter (debugger)
+    pub prev: u32,        // Last program counter (debugger)
     jmp: u32,             // Last jump location (debugger)
 }
 
@@ -81,7 +81,6 @@ impl CPU {
         }
         self.jmp = self.pc;
         let opcode = self.next_instruction();
-        println!("{:16b}", opcode);
         if let Some(instruction) = parse_instruction(opcode, self) {
             self.nxt = instruction;
             Signal::Ok
@@ -238,22 +237,23 @@ impl CPU {
 impl fmt::Display for CPU {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = String::from("\n");
-        s.push_str("╔═════════════════════════════════╦\n");
-        s.push_str("║ CPU state                       ║\n");
-        s.push_str("╟────┬───────────┬────┬───────────╫\n");
+        s.push_str(&format!("{r}╔═════════════════════════════════╦", r = cursor::Goto(1, 2)));
+        s.push_str(&format!("{r}║ CPU state                       ║", r = cursor::Goto(1, 3)));
+        s.push_str(&format!("{r}╟────┬───────────┬────┬───────────╫", r = cursor::Goto(1, 4)));
         for j in 0..8 {
             s.push_str(&format!(
-                "║ A{j} │  {a:08x} │ D{j} │  {d:08x} ║\n",
+                "{r}║ A{j} │  {a:08x} │ D{j} │  {d:08x} ║\n",
                 j = j,
                 a = *self.ar[j].borrow(),
-                d = *self.dr[j].borrow()
+                d = *self.dr[j].borrow(),
+                r = cursor::Goto(1, (j + 5) as u16),
             ));
         }
-        s.push_str("╟────┼─┬─┬─┬─┬─┬─┼────┼───────────╢\n");
-        s.push_str("║    │S│X│N│Z│V│C│    │           ║\n");
-        s.push_str("╟────┼─┼─┼─┼─┼─┼─┼────┼───────────╢\n");
+        s.push_str(&format!("{r}╟────┼─┬─┬─┬─┬─┬─┼────┼───────────╢", r = cursor::Goto(1, 13)));
+        s.push_str(&format!("{r}║    │S│X│N│Z│V│C│    │           ║", r = cursor::Goto(1, 14)));
+        s.push_str(&format!("{r}╟────┼─┼─┼─┼─┼─┼─┼────┼───────────╢", r = cursor::Goto(1, 15)));
         s.push_str(&format!(
-            "║ SR │{}│{}│{}│{}│{}│{}│ PC │  {:08x} ║\n",
+            "{r}║ SR │{}│{}│{}│{}│{}│{}│ PC │  {:08x} ║\n",
             self.ccr(CCR::S) as u8,
             self.ccr(CCR::X) as u8,
             self.ccr(CCR::N) as u8,
@@ -261,8 +261,9 @@ impl fmt::Display for CPU {
             self.ccr(CCR::V) as u8,
             self.ccr(CCR::C) as u8,
             self.pc,
+            r = cursor::Goto(1, 16)
         ));
-        s.push_str("╚════╧═╧═╧═╧═╧═╧═╧════╧═══════════╩\n");
+        s.push_str(&format!("{r}╚════╧═╧═╧═╧═╧═╧═╧════╧═══════════╩", r = cursor::Goto(1, 17)));
         write!(f, "{}", s)
     }
 }
@@ -285,11 +286,12 @@ pub struct Disassembly {
     pub disassembly: DisassemblySection,
     pub cursor: usize,
     pub length: usize,
+    pub breakpoints: HashSet::<u32>,
 }
 
 impl Disassembly {
     pub fn new(lines: usize) -> Self {
-        Self { disassembly: VecDeque::with_capacity(lines), cursor: 0, length: lines }
+        Self { disassembly: VecDeque::with_capacity(lines), cursor: 0, length: lines, breakpoints: HashSet::new() }
     }
     pub fn update(&mut self, cpu: &mut CPU) {
         if self.disassembly.is_empty() {
@@ -330,15 +332,15 @@ impl fmt::Display for Disassembly {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut result = String::new();
         result.push_str(&format!(
-            "{r}═════════════════════════════════════════════════════════════════════╗\n",
+            "{r}═══════════════════════════════════════════════════════════════════════╗\n",
             r = cursor::Goto(36, 2)
         ));
         result.push_str(&format!(
-            "{r} Next instructions                                                   ║\n",
+            "{r} Next instructions                                                     ║\n",
             r = cursor::Goto(36, 3)
         ));
         result.push_str(&format!(
-            "{r}─────────┬─────────────────────────┬─────────────────────────────────╢\n",
+            "{r}──────────┬──────────────────────────┬─────────────────────────────────╢\n",
             r = cursor::Goto(36, 4)
         ));
         for (j, line) in self.disassembly.iter().enumerate() {
@@ -346,28 +348,33 @@ impl fmt::Display for Disassembly {
             for word in &line.1 {
                 out.push_str(&format!("{:04x} ", word));
             }
-            if j + 1 == self.cursor {
-                result.push_str(&format!(
-                    "{r}{g}>{a:08x}{n}│{g}{o:<25}{n}│{g} {i:<32}{n}║\n",
+            let mut symbol = String::from(" ");
+            let mut color = format!("{}", color::Fg(color::Reset));
+            if self.breakpoints.contains(&line.0) {
+                symbol = format!("{r}*{n}", 
                     n = color::Fg(color::Reset),
-                    g = color::Fg(color::Green),
-                    o = out,
-                    i = line.2,
-                    a = line.0,
-                    r = cursor::Goto(36, (j + 5) as u16)
-                ));
-            } else {
-                result.push_str(&format!(
-                    "{r} {a:08x}│{b:<25}│ {i:<32}║\n",
-                    a = line.0,
-                    b = out,
-                    i = line.2,
-                    r = cursor::Goto(36, (j + 5) as u16)
-                ));
-            };
+                    r = color::Fg(color::Red),);
+                if j + 1 == self.cursor {
+                    symbol.push_str(&format!("{g}", g = color::Fg(color::Green)));
+                    color = format!("{}", color::Fg(color::Green));
+                } 
+            } else if j + 1 == self.cursor {
+                symbol = format!("{g}>", g = color::Fg(color::Green));
+                color = format!("{}", color::Fg(color::Green));
+            } 
+            result.push_str(&format!(
+                "{r}{sym}{a:08x}{n} │ {col}{o:<25}{n}│{col} {i:<32}{n}║\n",
+                n = color::Fg(color::Reset),
+                col = color,
+                o = out,
+                i = line.2,
+                a = line.0,
+                r = cursor::Goto(36, (j + 5) as u16),
+                sym = symbol,
+            ));
         }
         result.push_str(&format!(
-            "{r}═════════╧═════════════════════════╧═════════════════════════════════╝\n",
+            "{r}══════════╧══════════════════════════╧═════════════════════════════════╝\n",
             r = cursor::Goto(36, (self.length + 5) as u16)
         ));
         write!(f, "{}", result)

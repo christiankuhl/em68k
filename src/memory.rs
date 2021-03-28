@@ -3,7 +3,7 @@ use crate::processor::CPU;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub const RAM_SIZE: usize = 1 << 34;
+pub const RAM_SIZE: usize = 1 << 24;
 
 pub type RamPtr = Rc<RefCell<Vec<u8>>>;
 pub type RegPtr = Rc<RefCell<u32>>; 
@@ -21,6 +21,7 @@ impl MemoryHandle {
     }
     pub fn read(&self, size: Size) -> OpResult {
         if let Some(ptr) = self.ptr {
+            let ptr = ptr & (RAM_SIZE - 1);
             if let Some(mem) = &self.mem {
                 let raw_mem = mem.as_ref().borrow();
                 match size {
@@ -45,6 +46,7 @@ impl MemoryHandle {
     pub fn write(&self, res: OpResult) {
         if let Some(ptr) = self.ptr {
             if let Some(mem) = &self.mem {
+                let ptr = ptr & (RAM_SIZE - 1);
                 let mut raw_mem = mem.as_ref().borrow_mut();
                 match res {
                     OpResult::Byte(b) => raw_mem[ptr] = b,

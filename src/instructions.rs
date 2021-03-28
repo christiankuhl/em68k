@@ -339,7 +339,7 @@ impl Instruction {
                 let counter_reg = cpu.memory_handle(DataDirect(register));
                 let mut counter = counter_reg.read(Byte).inner() as i8;
                 if !condition.evaluate(cpu) {
-                    counter -= 1;
+                    counter = counter.wrapping_sub(1);
                     counter_reg.write(OpResult::Byte(counter as u8));
                     if counter != -1 {
                         cpu.pc = (cpu.pc as i32 + displacement - 2) as u32;
