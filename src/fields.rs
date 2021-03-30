@@ -75,23 +75,27 @@ impl OpResult {
         let mut ccr = CCRFlags::new();
         let src = other.sign_extend();
         let dest = self.sign_extend();
-        let res = dest.overflowing_sub(src);
-        ccr.n = Some(res.0 < 0);
-        ccr.z = Some(res.0 == 0);
-        ccr.v = Some((src >= 0 && dest < 0 && res.0 >= 0) || (src < 0 && dest >= 0 && res.0 < 0));
-        ccr.c = Some((src < 0 && dest >= 0) || (res.0 < 0 && dest >= 0) || (src < 0 && res.0 < 0));
-        (self.size().from(res.0), ccr)
+        let res = dest.wrapping_sub(src);
+        let result = self.size().from(res);
+        let neg = result.sign_extend() < 0;
+        ccr.n = Some(neg);
+        ccr.z = Some(res == 0);
+        ccr.v = Some((src >= 0 && dest < 0 && !neg) || (src < 0 && dest >= 0 && neg));
+        ccr.c = Some((src < 0 && dest >= 0) || (neg && dest >= 0) || (src < 0 && neg));
+        (result, ccr)
     }
     pub fn add(&self, other: Self) -> (Self, CCRFlags) {
         let mut ccr = CCRFlags::new();
         let src = self.sign_extend();
         let dest = other.sign_extend();
-        let res = dest.overflowing_add(src);
-        ccr.n = Some(res.0 < 0);
-        ccr.z = Some(res.0 == 0);
-        ccr.v = Some((src < 0 && dest < 0 && res.0 >= 0) || (src >= 0 && dest >= 0 && res.0 < 0));
-        ccr.c = Some((src < 0 && dest < 0) || (res.0 >= 0 && dest < 0) || (src < 0 && res.0 >= 0));
-        (self.size().from(res.0), ccr)
+        let res = dest.wrapping_add(src);
+        let result = self.size().from(res);
+        let neg = result.sign_extend() < 0;
+        ccr.n = Some(neg);
+        ccr.z = Some(res == 0);
+        ccr.v = Some((src < 0 && dest < 0 && !neg) || (src >= 0 && dest >= 0 && neg));
+        ccr.c = Some((src < 0 && dest < 0) || (!neg && dest < 0) || (src < 0 && !neg));
+        (result, ccr)
     }
     pub fn and(&self, other: Self) -> (Self, CCRFlags) {
         self.bitwise_op(other, |a: u32, b: u32| a & b)
@@ -116,11 +120,17 @@ impl OpResult {
         let src = self.inner();
         let dest = other.inner();
         let res = fun(src, dest);
-        ccr.n = Some((res as i32) < 0);
+        let result = self.size().from(res);
+        let negative = match result {
+            Self::Byte(b) => (b as i8) < 0,
+            Self::Word(w) => (w as i16) < 0,
+            Self::Long(l) => (l as i32) < 0,
+        };
+        ccr.n = Some(negative);
         ccr.z = Some(res == 0);
         ccr.v = Some(false);
         ccr.c = Some(false);
-        (self.size().from(res), ccr)
+        (result, ccr)
     }
     pub fn size(&self) -> Size {
         match self {
@@ -168,11 +178,11 @@ pub enum EAMode {
     // Absolute Long Addressing Mode
     AbsoluteLong(usize),
     // Program Counter Indirect with Displacement Mode
-    PCDisplacement(i32),
+    PCDisplacement(i32, u32),
     // Program Counter Indirect with Index (8-Bit Displacement) Mode
-    PCIndex8Bit(usize, i8, Size, usize, usize),
+    PCIndex8Bit(usize, i8, Size, usize, usize, u32),
     // Program Counter Indirect with Index (Base Displacement) Mode
-    PCIndexBase(usize, i32, Size, usize, usize),
+    PCIndexBase(usize, i32, Size, usize, usize, u32),
     // Program Counter Memory Indirect Postindexed Mode
     PCIndirectPostindexed, 
     // Program Counter Memory Indirect Preindexed Mode
@@ -194,16 +204,18 @@ impl EAMode {
                 let opcode = cpu.next_instruction();
                 if let Some(extword) = parse_extension_word(opcode) {
                     match extword {
-                        ExtensionWord::BEW { da, register: iregister, wl: wl, scale, displacement } => {
-                            Self::AddressIndex8Bit(earegister, iregister, (displacement & 0xff) as i8, size, scale, da)
+                        ExtensionWord::BEW { da, register: iregister, wl, scale, displacement } => {
+                            let index_size = Size::from_opcode(1 << wl);
+                            Self::AddressIndex8Bit(earegister, iregister, (displacement & 0xff) as i8, index_size, scale, da)
                         }
-                        ExtensionWord::FEW { da, register: iregister, wl: wl, scale, bs: bs, is: is, bdsize: bdsize, iis: iis } => {
+                        ExtensionWord::FEW { da, register: iregister, wl, scale, bs: _bs, is: _is, bdsize: _bdsize, iis: _iis } => {
                             let mut displacement: u32 = 0;
+                            let index_size = Size::from_opcode(1 << wl);
                             let (bdsize, _) = extword.remaining_length();
                             for j in 0..bdsize {
                                 displacement += ((cpu.next_instruction() as u32) * (1 << (8 * (bdsize - j - 1)))) as u32;
                             }
-                            Self::AddressIndexBase(earegister, iregister, displacement as i32, size, scale, da)
+                            Self::AddressIndexBase(earegister, iregister, displacement as i32, index_size, scale, da)
                         }
                     }
                 } else {
@@ -220,20 +232,22 @@ impl EAMode {
                         ptr += (extword as usize) << 16;
                         Self::AbsoluteLong(ptr)
                     }
-                    2 => Self::PCDisplacement(extword as i16 as i32),
+                    2 => Self::PCDisplacement(extword as i16 as i32, cpu.pc - 2),
                     3 => {
                         if let Some(extword) = parse_extension_word(extword) {
                             match extword {
-                                ExtensionWord::BEW { da, register, wl: _, scale, displacement } => {
-                                    Self::PCIndex8Bit(register, (displacement & 0xff) as i8, size, scale, da)
+                                ExtensionWord::BEW { da, register, wl, scale, displacement } => {
+                                    let index_size = Size::from_opcode(1 << wl);
+                                    Self::PCIndex8Bit(register, (displacement & 0xff) as i8, index_size, scale, da, cpu.pc - 2)
                                 }
-                                ExtensionWord::FEW { da, register, wl: _, scale, bs: _, is: _, bdsize: _, iis: _ } => {
+                                ExtensionWord::FEW { da, register, wl, scale, bs: _, is: _, bdsize: _, iis: _ } => {
                                     let mut displacement: u32 = 0;
+                                    let index_size = Size::from_opcode(1 << wl);
                                     let (bdsize, _) = extword.remaining_length();
                                     for j in 0..bdsize {
                                         displacement += (cpu.next_instruction() * (1 << (8 * (bdsize - j - 1)))) as u32;
                                     }
-                                    Self::PCIndexBase(register, displacement as i32, size, scale, da)
+                                    Self::PCIndexBase(register, displacement as i32, index_size, scale, da, cpu.pc - 2 * (bdsize as u32 + 1))
                                 }
                             }
                         } else {
@@ -267,17 +281,24 @@ impl EAMode {
             Self::AddressDisplacement(earegister, displacement) => format!("{:-x}(a{:})", SignedForDisplay(displacement), earegister),
             Self::AddressIndex8Bit(earegister, iregister, displacement, size, scale, da) => {
                 let da_flag = if da == 0 { "d" } else { "a" };
-                format!("({:x}a{:},{:}{:}.{:}*{:})", displacement, earegister, da_flag, iregister, size.as_asm(), scale)
+                format!("({:x}a{:},{:}{:}.{:}*{:})", SignedForDisplay(displacement), earegister, da_flag, iregister, size.as_asm(), 1 << scale)
             }
             Self::AddressIndexBase(earegister, iregister, displacement, size, scale, da) => {
                 let da_flag = if da == 0 { "d" } else { "a" };
-                format!("({:x}a{:},{:}{:}.{:}*{:})", displacement, earegister, da_flag, iregister, size.as_asm(), scale)
+                format!("({:x}a{:},{:}{:}.{:}*{:})", SignedForDisplay(displacement), earegister, da_flag, iregister, size.as_asm(), 1 << scale)
             }
             Self::AbsoluteShort(ptr) => format!("({:04x}).w", ptr),
             Self::AbsoluteLong(ptr) => format!("({:08x}).w", ptr),
-            Self::PCDisplacement(displ) => format!("({:04x},pc)", SignedForDisplay(displ)),
+            Self::PCDisplacement(displ, _) => format!("({:04x},pc)", SignedForDisplay(displ)),
             Self::Immediate(data) => format!("#{:}", data),
-            _ => panic!("Not implemented yet!"),
+            Self::PCIndex8Bit(register, displacement, size, scale, da, _) => {
+                let da_flag = if da == 0 { "d" } else { "a" };
+                format!("({:x}pc,{:}{:}.{:}*{:})", SignedForDisplay(displacement), da_flag, register, size.as_asm(), 1 << scale) 
+            }
+            _ => {
+                println!("{:?}", *self);
+                panic!("Not implemented yet!");
+            }
         }
     }
 }
@@ -375,6 +396,7 @@ impl Condition {
     }
 }
 
+#[derive(PartialEq)]
 pub enum BitMode {
     Flip,
     Clear,
@@ -474,6 +496,14 @@ impl fmt::LowerHex for SignedForDisplay<i32> {
 }
 
 impl fmt::LowerHex for SignedForDisplay<i16> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let prefix = if f.alternate() { "0x" } else { "" };
+        let bare_hex = format!("{:x}", self.0.abs());
+        f.pad_integral(self.0 >= 0, prefix, &bare_hex)
+    }
+}
+
+impl fmt::LowerHex for SignedForDisplay<i8> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let prefix = if f.alternate() { "0x" } else { "" };
         let bare_hex = format!("{:x}", self.0.abs());

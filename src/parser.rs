@@ -335,7 +335,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
                 operand: operand,
             });
         }
-        [_ANDI, size, mode, earegister] => {
+        [_ANDI, size, mode, earegister] if size < &3 => {
             let instr_size = Size::from_opcode(*size);
             let operand = cpu.immediate_operand(instr_size);
             return Some(ANDI {
@@ -437,16 +437,16 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         [_CMPA, register, opmode, mode, earegister] if opmode == &3 || opmode == &7 => {
             return Some(CMPA { register: *register, opmode: *opmode, mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) })
         }
-        [0x0, register, _BCHG, mode, earegister] => {
+        [0x0, register, _BCHG, mode, earegister] if mode != &1 => {
             return Some(BCHG { register: *register, mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) })
         }
-        [0x0, register, _BCLR, mode, earegister] => {
+        [0x0, register, _BCLR, mode, earegister]  if mode != &1 => {
             return Some(BCLR { register: *register, mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) })
         }
-        [0x0, register, _BSET, mode, earegister] => {
+        [0x0, register, _BSET, mode, earegister] if mode != &1 => {
             return Some(BSET { register: *register, mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) })
         }
-        [0x0, register, _BTST, mode, earegister] => {
+        [0x0, register, _BTST, mode, earegister] if mode != &1 => {
             return Some(BTST { register: *register, mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) })
         }
         [0x8, register, _DIVS, mode, earegister] => {
@@ -464,7 +464,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         [0xc, register, _MULU, mode, earegister] => {
             return Some(MULU { register: *register, mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) })
         }
-        [0x0, dregister, opmode, _MOVEP, aregister] if opmode > &4 => {
+        [0x0, dregister, opmode, _MOVEP, aregister] if opmode > &3 => {
             return Some(MOVEP {
                 dregister: *dregister,
                 opmode: *opmode,
@@ -545,45 +545,57 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
     }
     match split_instruction(opcode, vec![4, 3, 3, 3, 3]).as_slice() {
         [_ADD, register, opmode, mode, earegister] if opmode < &6 && opmode != &3 => {
+            let opmode_str = OpMode::from_opcode(*opmode);
+            let size = opmode_str.size();
             return Some(ADD {
                 register: *register,
-                opmode: OpMode::from_opcode(*opmode),
-                mode: EAMode::from(Size::Byte, *mode, *earegister, cpu),
+                opmode: opmode_str,
+                mode: EAMode::from(size, *mode, *earegister, cpu),
             })
         }
         [_AND, register, opmode, mode, earegister] => {
+            let opmode_str = OpMode::from_opcode(*opmode);
+            let size = opmode_str.size();
             return Some(AND {
                 register: *register,
-                opmode: OpMode::from_opcode(*opmode),
-                mode: EAMode::from(Size::Byte, *mode, *earegister, cpu),
+                opmode: opmode_str,
+                mode: EAMode::from(size, *mode, *earegister, cpu),
             })
         }
         [_CMP, register, opmode, mode, earegister] if opmode < &3 => {
+            let opmode_str = OpMode::from_opcode(*opmode);
+            let size = opmode_str.size();
             return Some(CMP {
                 register: *register,
-                opmode: OpMode::from_opcode(*opmode),
-                mode: EAMode::from(Size::Byte, *mode, *earegister, cpu),
+                opmode: opmode_str,
+                mode: EAMode::from(size, *mode, *earegister, cpu),
             })
         }
         [_EOR, register, opmode, mode, earegister] if opmode > &3 && opmode < &7 => {
+            let opmode_str = OpMode::from_opcode(*opmode);
+            let size = opmode_str.size();
             return Some(EOR {
                 register: *register,
-                opmode: OpMode::from_opcode(*opmode),
-                mode: EAMode::from(Size::Byte, *mode, *earegister, cpu),
+                opmode: opmode_str,
+                mode: EAMode::from(size, *mode, *earegister, cpu),
             })
         }
         [_OR, register, opmode, mode, earegister] => {
+            let opmode_str = OpMode::from_opcode(*opmode);
+            let size = opmode_str.size();
             return Some(OR {
                 register: *register,
-                opmode: OpMode::from_opcode(*opmode),
-                mode: EAMode::from(Size::Byte, *mode, *earegister, cpu),
+                opmode: opmode_str,
+                mode: EAMode::from(size, *mode, *earegister, cpu),
             })
         }
         [_SUB, register, opmode, mode, earegister] if opmode != &3 && opmode != &7 => {
+            let opmode_str = OpMode::from_opcode(*opmode);
+            let size = opmode_str.size();
             return Some(SUB {
                 register: *register,
-                opmode: OpMode::from_opcode(*opmode),
-                mode: EAMode::from(Size::Byte, *mode, *earegister, cpu),
+                opmode: opmode_str,
+                mode: EAMode::from(size, *mode, *earegister, cpu),
             })
         }
         _ => {}

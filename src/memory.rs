@@ -51,8 +51,8 @@ impl MemoryHandle {
                 match res {
                     OpResult::Byte(b) => raw_mem[ptr] = b,
                     OpResult::Word(w) => {
-                        raw_mem[ptr] = (w & 0xff) as u8;
-                        raw_mem[ptr + 1] = ((w & 0xff00) >> 8) as u8;
+                        raw_mem[ptr + 1] = (w & 0xff) as u8;
+                        raw_mem[ptr] = ((w & 0xff00) >> 8) as u8;
                     }
                     OpResult::Long(l) => {
                         raw_mem[ptr + 3] = (l & 0xff) as u8;
@@ -93,5 +93,11 @@ impl MemoryHandle {
     }
     pub fn ptr(&self) -> Option<usize> {
         self.ptr
+    }
+    pub fn in_memory(&self) -> bool {
+        match self.ptr {
+            Some(_) => true,
+            None => false,
+        }
     }
 }

@@ -3,7 +3,6 @@ use crate::processor::{Disassembly, CPU};
 use std::cell::RefCell;
 use std::mem::discriminant;
 use std::io::{Stdin, Stdout, stdin, stdout};
-use std::ops::BitAndAssign;
 use std::rc::Rc;
 use termion::event::{Event, Key};
 use termion::input::{MouseTerminal, TermRead};
@@ -97,7 +96,7 @@ impl Device for Debugger {
         self.ram = ram;
     }
     fn update(&mut self, cpu: &mut CPU) -> Signal {
-        if !self.code_running || self.disassembly.breakpoints.contains(&cpu.prev) {
+        if !self.code_running || self.disassembly.breakpoints.contains(&cpu.jmp) {
             self.code_running = false;
             self.disassembly.update(cpu);
             self.draw_user_interface(cpu);

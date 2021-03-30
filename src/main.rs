@@ -11,9 +11,13 @@ mod conversions;
 mod devices;
 use devices::{Debugger, DeviceList, Signal, ASMStream};
 mod fields;
-use fields::EAMode;
+use fields::{EAMode, OpResult};
 mod atari;
-use atari::*;
+// use atari::*;
+
+const BASE_ADDRESS: u32 = 0x0;
+const START_ADDRESS: u32 = 0x400;
+const MEMORY_LAYOUT: [(usize, OpResult); 0] = [];
 
 pub struct Emulator {
     cpu: CPU,
@@ -99,9 +103,9 @@ impl Emulator {
 
 fn main() {
     let mut dev = DeviceList::new();
-    dev.push(Debugger::new());
-    // dev.push(Box::new(ASMStream));
+    // dev.push(Debugger::new());
+    dev.push(Box::new(ASMStream));
     let mut em = Emulator::new(dev);
-    // em.run("examples/strtolower.bin");
-    em.run("tos/TOS104GE.IMG");
+    em.run("tests/opcode_tests.bin");
+    // em.run("tos/TOS104GE.IMG");
 }

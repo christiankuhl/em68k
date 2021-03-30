@@ -22,7 +22,7 @@ pub struct CPU {
     pub ram: RamPtr,      // Pointer to RAM
     pub nxt: Instruction, // Next instruction (debugger)
     pub prev: u32,        // Last program counter (debugger)
-    jmp: u32,             // Last jump location (debugger)
+    pub jmp: u32,         // Last jump location (debugger)
 }
 
 #[derive(Debug)]
@@ -105,7 +105,7 @@ impl CPU {
             }
             EAMode::AddressPostincr(register, size) => {
                 let ptr = (*self.ar[register]).borrow().clone() as usize;
-                if register == 7 && size as u32 == 1 {
+                if register == 7 && size == Size::Byte {
                     *self.ar[register].borrow_mut() += 2;
                 } else {
                     *self.ar[register].borrow_mut() += size as u32;
@@ -113,7 +113,7 @@ impl CPU {
                 MemoryHandle::new(None, Some(ptr), None, self)
             }
             EAMode::AddressPredecr(register, size) => {
-                if register == 7 && size as u32 == 1 {
+                if register == 7 && size == Size::Byte {
                     *self.ar[register].borrow_mut() -= 2;
                 } else {
                     *self.ar[register].borrow_mut() -= size as u32;
@@ -152,7 +152,7 @@ impl CPU {
             EAMode::AbsoluteShort(ptr) => MemoryHandle::new(None, Some(ptr), None, self),
             EAMode::AbsoluteLong(ptr) => MemoryHandle::new(None, Some(ptr), None, self),
             EAMode::Immediate(data) => MemoryHandle::new(None, None, Some(data), self),
-            EAMode::PCIndex8Bit(iregister, displacement, size, scale, da) => {
+            EAMode::PCIndex8Bit(iregister, displacement, size, scale, da, pc) => {
                 let index_handle = if da == 0 {
                     self.memory_handle(EAMode::DataDirect(iregister))
                 } else {
@@ -161,11 +161,11 @@ impl CPU {
                 let mut ptr = index_handle.read(size).sign_extend() as i32;
                 ptr *= 1 << scale;
                 ptr += displacement as i32;
-                ptr += self.pc as i32;
+                ptr += pc as i32;
                 MemoryHandle::new(None, Some(ptr as usize), None, self)
             }
-            EAMode::PCDisplacement(displacement) => {
-                let ptr = (self.pc as i32 + displacement as i32 - 2) as usize;
+            EAMode::PCDisplacement(displacement, pc) => {
+                let ptr = (pc as i32 + displacement as i32) as usize;
                 MemoryHandle::new(None, Some(ptr), None, self)
             }
             _ => panic!("Invalid addressing mode!"),

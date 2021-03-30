@@ -268,11 +268,12 @@ impl Instruction {
                 cpu.pc = addr;
             }
             Self::JSR { mode } => {
-                cpu.pc = cpu.memory_address(mode) - 2;
+                let pc = cpu.pc;
+                cpu.pc = cpu.memory_address(mode);
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
                 *sp -= 4;
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
-                ram_handle.write(OpResult::Long(cpu.pc + 2));
+                ram_handle.write(OpResult::Long(pc));
             }
             Self::MOVECCR { mode } => {
                 let src = cpu.memory_handle(mode).read(Word).inner();
@@ -546,7 +547,7 @@ impl Instruction {
                 ccr.c = Some(false);
                 ccr.set(cpu);
             }
-            Self::BRA { displacement } => cpu.pc = (cpu.pc as i32 + displacement) as u32,
+            Self::BRA { displacement } => {panic!("Foo!")}// cpu.pc = (cpu.pc as i32 + displacement) as u32,
             Self::BSR { displacement } => {
                 let pc = (cpu.pc as i32 + displacement) as u32;
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
@@ -749,28 +750,32 @@ impl Instruction {
                 let oplength = 1 << ((opmode % 2) + 1);
                 let mut ram_handle = cpu.memory_handle(AddressDisplacement(aregister, displacement));
                 let mut result: u32 = 0;
+                let reg = cpu.memory_handle(DataDirect(dregister));
                 if (opmode - 4) / 2 == 0 {
                     if oplength == 2 {
-                        result = ram_handle.read(Word).inner();
+                        result = ram_handle.read(Byte).inner() << 8;
                         ram_handle.offset(2);
-                        result += ram_handle.read(Word).inner() >> 8;
-                        cpu.dr[dregister].as_ref().replace(result);
+                        result += ram_handle.read(Byte).inner();
+                        reg.write(OpResult::Word(result as u16));
                     } else {
-                        for j in 0..3 {
-                            result += ram_handle.read(Word).inner() << (16 - 8 * j);
+                        for j in 0..4 {
+                            result += ram_handle.read(Byte).inner() << (24 - 8 * j);
                             ram_handle.offset(2);
                         }
-                        result += ram_handle.read(Word).inner() >> 8;
-                        cpu.dr[dregister].as_ref().replace(result);
+                        reg.write(OpResult::Long(result));
                     }
                 } else {
                     result = *cpu.dr[dregister].as_ref().borrow();
-                    ram_handle.offset(6);
-                    for _ in 0..oplength {
+                    ram_handle.offset(2 * oplength);
+                    for _ in 0..oplength / 2 {
+                        ram_handle.offset(-2);
                         ram_handle.write(OpResult::Byte((result & 0xff) as u8));
                         result = result >> 8;
                         ram_handle.offset(-2);
+                        ram_handle.write(OpResult::Byte((result & 0xff) as u8));
+                        result = result >> 8;
                     }
+                    
                 }
             }
             Self::SCC { condition, mode } => {
@@ -1168,14 +1173,14 @@ fn change_bit(mode: EAMode, register: Option<usize>, extword: Option<u16>, cpu: 
         if register == None { extword.unwrap() as usize } else { *cpu.dr[register.unwrap()].borrow() as usize };
     let bitnumber;
     let size;
-    if mode == DataDirect(0) {
+    let handle = cpu.memory_handle(mode);
+    if !handle.in_memory() {
         bitnumber = bitnumber_word % 32;
         size = Long;
     } else {
         bitnumber = bitnumber_word % 8;
         size = Byte;
     }
-    let handle = cpu.memory_handle(mode);
     let mut bitfield = handle.read(size).inner() as usize;
     let mut value = get_bit(bitfield as usize, bitnumber);
     let mut ccr = CCRFlags::new();
@@ -1188,11 +1193,13 @@ fn change_bit(mode: EAMode, register: Option<usize>, extword: Option<u16>, cpu: 
         BitMode::None => {}
     }
     set_bit(&mut bitfield, bitnumber, value);
-    if mode == DataDirect(0) {
-        handle.write(OpResult::Long(bitfield as u32));
-    } else {
-        handle.write(OpResult::Byte((bitfield & 0xff) as u8));
-    }
+    if opmode != BitMode::None {
+        if !handle.in_memory() {
+            handle.write(OpResult::Long(bitfield as u32));
+        } else {
+            handle.write(OpResult::Byte((bitfield & 0xff) as u8));
+        }
+}
 }
 
 // FIXME: Make this more elegant
