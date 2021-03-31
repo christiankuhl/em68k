@@ -63,7 +63,7 @@ impl Emulator {
             }
         }
         self.cpu.pc = START_ADDRESS;
-        // self.cpu.ssp.replace();
+        self.cpu.ssp.replace(0x3f0);
         self.cpu.supervisor_mode(true);
         for (addr, val) in MEMORY_LAYOUT.iter() {
             let handle = self.cpu.memory_handle(EAMode::AbsoluteLong(*addr));

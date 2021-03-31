@@ -127,7 +127,7 @@ impl OpResult {
             Self::Long(l) => (l as i32) < 0,
         };
         ccr.n = Some(negative);
-        ccr.z = Some(res == 0);
+        ccr.z = Some(result.inner() == 0);
         ccr.v = Some(false);
         ccr.c = Some(false);
         (result, ccr)
@@ -305,7 +305,7 @@ impl EAMode {
 
 impl PartialEq for EAMode {
     fn eq(&self, other: &EAMode) -> bool {
-        discriminant(&self) == discriminant(&other)
+        discriminant(self) == discriminant(other)
     }
 }
 
@@ -438,11 +438,18 @@ impl PackedBCD {
     pub fn from(res: OpResult) -> Self {
         match res {
             OpResult::Byte(b) => {
-                let value = (b & 0xf) + 10 * (b & 0xf0 >> 4);
-                if value > 9 {
-                    panic!("Invalid BCD encoding!")
-                };
-                Self(value)
+                let mut ones = b & 0xf;
+                let mut tens = b & 0xf0 >> 4;
+                if ones > 9 {
+                    ones = (ones + 6) % 16;
+                }
+                if tens > 9 {
+                    tens = (tens + 6) % 16;
+                }
+                // if b & 0xf > 9 || (b & 0xf0 >> 4) > 9 {
+                //     panic!("Invalid BCD encoding!")
+                // };
+                Self(10 * tens + ones)
             }
             _ => panic!("Unsupported operation!"),
         }

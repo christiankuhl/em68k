@@ -157,14 +157,13 @@ impl Instruction {
                 if !cpu.in_supervisor_mode() {
                     privilege_violation(cpu);
                 } else {
-                    let mut ssp = cpu.ssp.as_ref().borrow_mut();
+                    let mut ssp = cpu.ar[7].as_ref().borrow_mut();
                     let mut ram_handle = MemoryHandle::new(None, Some(*ssp as usize), None, cpu);
                     cpu.sr = ram_handle.read(Word).inner();
                     *ssp += 2;
                     ram_handle.offset(2);
                     cpu.pc = ram_handle.read(Long).inner();
                     *ssp += 4;
-                    // FIXME: Do the actual restore
                 }
             }
             Self::RTR => {
@@ -211,7 +210,7 @@ impl Instruction {
                 let res;
                 {
                     let mut reg = cpu.dr[register].as_ref().borrow_mut();
-                    *reg = (*reg & 0xffff0000 >> 16) + (*reg & 0xffff << 16);
+                    *reg = ((*reg & 0xffff0000) >> 16) + ((*reg & 0xffff) << 16);
                     res = *reg;
                 }
                 let ccr = CCRFlags { c: Some(false), v: Some(false), z: Some(res == 0), n: Some(res & (1 << 31) > 0), x: None };
@@ -227,14 +226,15 @@ impl Instruction {
             }
             Self::TRAP { vector } => {
                 cpu.supervisor_mode(true);
-                let mut ssp = cpu.ssp.as_ref().borrow_mut();
+                let mut ssp = cpu.ar[7].as_ref().borrow_mut();
                 *ssp -= 4;
                 let mut ram_handle = MemoryHandle::new(None, Some(*ssp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(cpu.pc));
                 *ssp -= 2;
-                ram_handle = MemoryHandle::new(None, Some(*ssp as usize), None, cpu);
-                ram_handle.write(OpResult::Word((cpu.sr & 0xffff) as u16));
-                cpu.pc = (4 * vector + 0x7E) as u32;
+                ram_handle.offset(-2);
+                ram_handle.write(OpResult::Word(cpu.sr as u16));
+                ram_handle = MemoryHandle::new(None, Some(4 * vector as usize), None, cpu);
+                cpu.pc = ram_handle.read(Long).inner();
             }
             Self::MOVEUSP { register, dr } => {
                 if !cpu.in_supervisor_mode() {
@@ -282,7 +282,7 @@ impl Instruction {
             }
             Self::MOVEFROMSR { mode } => {
                 let dest = cpu.memory_handle(mode);
-                dest.write(OpResult::Word((cpu.sr & 0x8e0) as u16));
+                dest.write(OpResult::Word((cpu.sr & 0xf71f) as u16));
             }
             Self::MOVETOSR { mode } => {
                 let src = cpu.memory_handle(mode).read(Word).inner();
@@ -348,23 +348,28 @@ impl Instruction {
                 }
             }
             Self::MOVEM { size, dr, mode, register_mask } => {
-                // FIXME: Handle address register
+                // FIXME: Handle address register for specific architecture differences
                 if dr == 0 {
                     let mut tgt = cpu.memory_handle(mode);
                     let mut result;
-                    if mode == AddressPredecr(0, Byte) {
-                        tgt.offset(-(size as isize));
-                    }
                     for j in 0..16 {
                         if register_mask & (1 << j) != 0 {
                             let register;
-                            if j < 8 {
-                                register = cpu.dr[j].as_ref().borrow();
+                            if mode == AddressPredecr(0, Byte) {
+                                if j < 8 {
+                                    register = cpu.ar[7 - j].as_ref().borrow();
+                                } else {
+                                    register = cpu.dr[15 - j].as_ref().borrow();
+                                }
                             } else {
-                                register = cpu.ar[j].as_ref().borrow();
+                                if j < 8 {
+                                    register = cpu.dr[j].as_ref().borrow();
+                                } else {
+                                    register = cpu.ar[j - 8].as_ref().borrow();
+                                }
                             }
                             if size == Word {
-                                result = OpResult::Word((*register & 0xffff) as u16)
+                                result = OpResult::Word(*register as u16)
                             } else {
                                 result = OpResult::Long(*register);
                             }
@@ -385,7 +390,7 @@ impl Instruction {
                             if j < 8 {
                                 register = cpu.dr[j].as_ref().borrow_mut();
                             } else {
-                                register = cpu.ar[j].as_ref().borrow_mut();
+                                register = cpu.ar[j - 8].as_ref().borrow_mut();
                             }
                             if size == Word {
                                 result = ((src.read(size).inner() & 0xffff) as i16) as u32
@@ -409,8 +414,9 @@ impl Instruction {
                     src = cpu.memory_handle(AddressPredecr(ry, Byte));
                     dest = cpu.memory_handle(AddressPredecr(rx, Byte));
                 }
+                // println!("{} {}", src.read(Byte), dest.read(Byte));
                 let a = PackedBCD::from(src.read(Byte));
-                let b = PackedBCD::from(src.read(Byte));
+                let b = PackedBCD::from(dest.read(Byte));
                 let (result, carry) = a.add(b, cpu.ccr(CCR::X));
                 dest.write(result.pack());
                 ccr.x = Some(carry);
@@ -431,7 +437,7 @@ impl Instruction {
                     src = cpu.memory_handle(AddressPredecr(ry, Byte));
                     dest = cpu.memory_handle(AddressPredecr(rx, Byte));
                 }
-                let a = PackedBCD::from(src.read(Byte));
+                let a = PackedBCD::from(dest.read(Byte));
                 let b = PackedBCD::from(src.read(Byte));
                 let (result, carry) = a.sub(b, cpu.ccr(CCR::X));
                 dest.write(result.pack());
@@ -484,12 +490,7 @@ impl Instruction {
                 let operand = handle.read(size);
                 let res = size.zero().sub(operand);
                 let result = res.0;
-                let mut ccr = res.1;
-                let dm = operand.sign_extend() < 0;
-                let rm = operand.sign_extend() < 0;
-                ccr.v = Some(dm && rm);
-                ccr.c = Some(dm || rm);
-                ccr.x = ccr.c;
+                let ccr = res.1;
                 handle.write(result);
                 ccr.set(cpu);
             }
@@ -497,13 +498,8 @@ impl Instruction {
                 let handle = cpu.memory_handle(mode);
                 let x = cpu.ccr(CCR::X);
                 let operand = handle.read(size);
-                let res = size.zero().sub(operand);
-                let mut result = res.0;
-                result = match result {
-                    OpResult::Byte(op) => OpResult::Byte((op.wrapping_sub(x as u8) & 0xff) as u8),
-                    OpResult::Word(op) => OpResult::Word((op.wrapping_sub(x as u16) & 0xffff) as u16),
-                    OpResult::Long(op) => OpResult::Long(op.wrapping_sub(x as u32)),
-                };
+                let res = size.zero().sub(operand).0.sub(size.from(x as u8));
+                let result = res.0;
                 let mut ccr = res.1;
                 let dm = operand.sign_extend() < 0;
                 let rm = result.sign_extend() < 0;
@@ -539,21 +535,21 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::TST { size, mode } => {
-                let operand = cpu.memory_handle(mode).read(size).inner();
-                let mut ccr = CCRFlags::new();
-                ccr.n = Some((operand as i32) < 0);
-                ccr.z = Some(operand == 0);
+                let operand = cpu.memory_handle(mode).read(size);
+                let (_, mut ccr) = operand.sub(size.zero());
                 ccr.v = Some(false);
                 ccr.c = Some(false);
                 ccr.set(cpu);
             }
-            Self::BRA { displacement } => {panic!("Foo!")}// cpu.pc = (cpu.pc as i32 + displacement) as u32,
+            Self::BRA { displacement } => {
+                println!("{:08x}", *cpu.dr[5].borrow());
+                panic!("Foo!")}// cpu.pc = (cpu.pc as i32 + displacement) as u32,
             Self::BSR { displacement } => {
                 let pc = (cpu.pc as i32 + displacement) as u32;
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
                 *sp -= 4;
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
-                ram_handle.write(OpResult::Long(cpu.pc + 2));
+                ram_handle.write(OpResult::Long(cpu.pc));
                 cpu.pc = pc;
             }
             Self::CMPM { ax, ay, size } => {
@@ -561,7 +557,6 @@ impl Instruction {
                 let dest = cpu.memory_handle(AddressPostincr(ax, size));
                 let res = dest.read(size).sub(src);
                 let ccr = res.1;
-                dest.write(res.0);
                 ccr.set(cpu);
             }
             Self::ADDX { rx, ry, rm, size } => {
@@ -663,47 +658,50 @@ impl Instruction {
                 ccr.c = Some(false);
                 ccr.v = Some(false);
                 ccr.z = Some(dividend == 0);
+                ccr.n = Some(dividend.signum() * divisor.signum() < 0);
                 if divisor == 0 {
                     let trap = Self::TRAP { vector: 4 }; // FIXME: Right trap vector
                     ccr.set(cpu);
-                    trap.execute(cpu);
+                    return trap.execute(cpu);
                 }
                 let res = dividend.overflowing_div(divisor);
-                if res.1 {
+                if res.1 || res.0 > 0x7fff || res.0 < -0x8000 {
                     ccr.v = Some(true);
                     ccr.set(cpu);
                     return Signal::Ok
                 }
                 let rem = (dividend % divisor) * dividend.signum();
-                dest.write(OpResult::Long((rem as u32 & 0xffff0000) + (res.0 as u32 & 0xffff)));
+                dest.write(OpResult::Long(((rem as u32) << 16) + (res.0 as u32 & 0xffff)));
                 ccr.set(cpu);
             }
             Self::DIVU { register, mode } => {
                 let dest = cpu.memory_handle(DataDirect(register));
                 let src = cpu.memory_handle(mode);
-                let dividend = dest.read(Long).inner() as u32;
+                let dividend = dest.read(Long).inner();
                 let divisor = src.read(Word).inner() as u32;
                 let mut ccr = CCRFlags::new();
                 ccr.c = Some(false);
                 ccr.v = Some(false);
                 ccr.z = Some(dividend == 0);
                 if divisor == 0 {
-                    let trap = Self::TRAP { vector: 4 }; // FIXME: Right trap vector
+                    let trap = Self::TRAP { vector: 5 };
                     ccr.set(cpu);
-                    trap.execute(cpu);
+                    return trap.execute(cpu);
                 }
                 let res = dividend.overflowing_div(divisor);
-                if res.1 {
+                if res.1 || res.0 > 0xffff {
                     ccr.v = Some(true);
                     ccr.set(cpu);
                     return Signal::Ok
                 }
+                ccr.n = Some((res.0 as i16) < 0);
                 let rem = dividend % divisor;
-                dest.write(OpResult::Long((rem as u32 & 0xffff0000) + (res.0 as u32 & 0xffff)));
+                let result = OpResult::Long(((rem as u32) << 16) + (res.0 as u32 & 0xffff));
+                dest.write(result);
                 ccr.set(cpu);
             }
             Self::LEA { register, mode } => {
-                let addr = cpu.memory_address(mode) - 2;
+                let addr = cpu.memory_address(mode);
                 cpu.ar[register].replace(addr);
             }
             Self::MULS { register, mode } => {
@@ -815,7 +813,14 @@ impl Instruction {
                 rolr(handle, Word, 1, dr, cpu);
             }
             Self::MOVEQ { register, data } => {
-                cpu.dr[register].as_ref().replace((data & 0xff) as i8 as u32);
+                let result = data as i8;
+                let mut ccr = CCRFlags::new();
+                cpu.dr[register].as_ref().replace(result as u32);
+                ccr.v = Some(false);
+                ccr.c = Some(false);
+                ccr.n = Some(result < 0);
+                ccr.z = Some(result == 0);
+                ccr.set(cpu);
             }
             Self::EXG { opmode, rx, ry } => {
                 let (src, dest) = match opmode {
@@ -922,7 +927,7 @@ impl Instruction {
                 let ophandle = cpu.memory_handle(mode);
                 let dr = drhandle.read(opmode.size());
                 let op = ophandle.read(opmode.size());
-                let res = dr.sub(op);
+                let res = dr.or(op);
                 let ccr = res.1;
                 let result = res.0;
                 opmode.write(drhandle, ophandle, result);
@@ -978,9 +983,9 @@ impl Instruction {
             Self::TRAP { vector } => format!("trap #{}", vector),
             Self::MOVEUSP { register, dr } => {
                 if dr == 0 {
-                    format!("move usp,a{}", register)
-                } else {
                     format!("move a{},usp", register)
+                } else {
+                    format!("move usp,a{}", register)
                 }
             }
             Self::BCHGS { mode, extword } => format!("bchg #{},{}", extword, mode),
@@ -1005,8 +1010,14 @@ impl Instruction {
             Self::MOVEM { size, dr, mode, register_mask } => {
                 let mut register_list = String::new();
                 for j in 0..16 {
-                    if register_mask & (1 << j) != 0 {
-                        register_list.push_str(&format!("{}{}/", if j < 8 { "d" } else { "a" }, j));
+                    if mode == AddressPredecr(0, Size::Byte) {
+                        if register_mask & (1 << j) != 0 {
+                            register_list.push_str(&format!("{}{}/", if j < 8 { "a" } else { "d" }, (15 - j) % 8));
+                        }
+                    } else {
+                        if register_mask & (1 << j) != 0 {
+                            register_list.push_str(&format!("{}{}/", if j < 8 { "d" } else { "a" }, j % 8));
+                        }
                     }
                 }
                 register_list.pop();
@@ -1158,7 +1169,7 @@ impl Instruction {
 
 fn privilege_violation(cpu: &mut CPU) {
     cpu.supervisor_mode(true);
-    let mut ssp = cpu.ssp.as_ref().borrow_mut();
+    let mut ssp = cpu.ar[7].as_ref().borrow_mut();
     *ssp -= 4;
     let mut ram_handle = MemoryHandle::new(None, Some(*ssp as usize), None, cpu);
     ram_handle.write(OpResult::Long(cpu.pc));
