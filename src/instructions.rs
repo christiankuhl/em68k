@@ -338,10 +338,10 @@ impl Instruction {
             }
             Self::DBCC { condition, register, displacement } => {
                 let counter_reg = cpu.memory_handle(DataDirect(register));
-                let mut counter = counter_reg.read(Byte).inner() as i8;
+                let mut counter = counter_reg.read(Word).inner() as i16;
                 if !condition.evaluate(cpu) {
                     counter = counter.wrapping_sub(1);
-                    counter_reg.write(OpResult::Byte(counter as u8));
+                    counter_reg.write(OpResult::Word(counter as u16));
                     if counter != -1 {
                         cpu.pc = (cpu.pc as i32 + displacement - 2) as u32;
                     }
@@ -542,8 +542,10 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::BRA { displacement } => {
-                println!("{:08x}", *cpu.dr[5].borrow());
-                panic!("Foo!")}// cpu.pc = (cpu.pc as i32 + displacement) as u32,
+                // println!("{:08x}", *cpu.dr[4].borrow());
+                // panic!("Foo!");
+                cpu.pc = (cpu.pc as i32 + displacement) as u32;
+            }
             Self::BSR { displacement } => {
                 let pc = (cpu.pc as i32 + displacement) as u32;
                 let mut sp = cpu.ar[7].as_ref().borrow_mut();
@@ -907,6 +909,7 @@ impl Instruction {
                 let ophandle = cpu.memory_handle(mode);
                 let dr = drhandle.read(opmode.size());
                 let op = ophandle.read(opmode.size());
+                // println!("{}, {}", dr, op);
                 let res = dr.sub(op);
                 let ccr = res.1;
                 ccr.set(cpu);
@@ -1036,9 +1039,9 @@ impl Instruction {
             }
             Self::SBCD { rx, ry, rm } => {
                 if rm == 0 {
-                    format!("abcd d{},d{}", ry, rx)
+                    format!("sbcd d{},d{}", ry, rx)
                 } else {
-                    format!("abcd -(a{}),-(a{})", ry, rx)
+                    format!("sbcd -(a{}),-(a{})", ry, rx)
                 }
             }
             Self::ADDI { size, mode, operand } => format!("addi.{} #{},{}", size, operand, mode),

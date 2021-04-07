@@ -108,68 +108,68 @@ EXCEPTION_7:
    move.l #$000003F0,a7      ; populate stack pointer
 
 
-   ;jsr op_ORI_TO_CCR
-   ;jsr op_ORI_TO_SR
-   ;jsr op_EORI_TO_CCR
-   ;jsr op_EORI_TO_SR
-   ;jsr op_ANDI_TO_CCR
-   ;jsr op_ANDI_TO_SR
-   ;jsr op_BTST
-   ;jsr op_BCHG
-   ;jsr op_BCLR
-   ;jsr op_BSET
-   ;jsr op_MOVEP
-   ;jsr op_BOOL_I
-   ;jsr op_CMP_I
-   ;jsr op_ADD_I
-   ;jsr op_SUB_I
-   ;jsr op_MOVE
-   ;jsr op_MOVE_xxx_FLAGS
-   ;jsr op_EXT
-   ;jsr op_SWAP
-   ;jsr op_LEAPEA 
-   ;jsr op_TAS 
-   ;jsr op_TST 
-   ;jsr op_LINKS 
-   ;jsr op_MOVE_USP
-   ;jsr op_CHK
-   ;jsr op_NEGS
-   ;jsr op_CLR
-   ;jsr op_MOVEM
-   ;;jsr op_ABCD
-   ;;jsr op_SBCD
-   ;;jsr op_NBCD
-   ;jsr op_TRAPV
-   ;jsr op_RTR
-   ;jsr op_BSR
-   ;jsr op_BCC
-   ;jsr op_DBCC
-   ;jsr op_SCC
-   ;;jsr op_ADDQ
-   ;;jsr op_SUBQ
-   ;jsr op_MOVEQ
-   ;jsr op_DIVU ;#FIXME: Flags
-   ;jsr op_DIVS ;#FIXME: Flags
-   ;jsr op_OR
-   ;jsr op_AND
-   ;jsr op_EOR
-   ;jsr op_CMP
-   ;jsr op_CMPA
-   ;jsr op_CMPM
-   ;;jsr op_ADD #FIXME: Flags
-   ;;jsr op_SUB #FIXME: Flags
-   ;jsr op_ADDA
-   ;jsr op_SUBA
-   ;jsr op_ADDX
-   ;jsr op_SUBX
-   ;jsr op_MULU
-   ;jsr op_MULS
-   ;jsr op_EXG
-   ;jsr op_ROx
-   ;jsr op_ROXx
-   jsr op_SHIFTS
+   jsr op_ORI_TO_CCR
+   jsr op_ORI_TO_SR
+   jsr op_EORI_TO_CCR
+   jsr op_EORI_TO_SR
+   jsr op_ANDI_TO_CCR
+   jsr op_ANDI_TO_SR
+   jsr op_BTST
+   jsr op_BCHG
+   jsr op_BCLR
+   jsr op_BSET
+   jsr op_MOVEP
+   jsr op_BOOL_I
+   jsr op_CMP_I
+   jsr op_ADD_I
+   jsr op_SUB_I
+   jsr op_MOVE
+   jsr op_MOVE_xxx_FLAGS
+   jsr op_EXT
+   jsr op_SWAP
+   jsr op_LEAPEA 
+   jsr op_TAS 
+   jsr op_TST 
+   jsr op_LINKS 
+   jsr op_MOVE_USP
+   jsr op_CHK
+   jsr op_NEGS
+   jsr op_CLR
+   jsr op_MOVEM
+   ;jsr op_ABCD
+   ;jsr op_SBCD
+   ;jsr op_NBCD
+   jsr op_TRAPV
+   jsr op_RTR
+   jsr op_BSR
+   jsr op_BCC
+   jsr op_DBCC
+   jsr op_SCC
+   jsr op_ADDQ
+   jsr op_SUBQ
+   jsr op_MOVEQ
+   jsr op_DIVU ;#FIXME: Flags
+   jsr op_DIVS ;#FIXME: Flags
+   jsr op_OR
+   jsr op_AND
+   jsr op_EOR
+   jsr op_CMP
+   jsr op_CMPA
+   jsr op_CMPM
+   jsr op_ADD ;#FIXME: Flags
+   jsr op_SUB ;#FIXME: Flags
+   jsr op_ADDA
+   jsr op_SUBA
+   jsr op_ADDX
+   jsr op_SUBX
+   jsr op_MULU
+   jsr op_MULS
+   jsr op_EXG
+   jsr op_ROx
+   jsr op_ROXx
    jsr op_SHIFTS2
-   
+   jsr op_SHIFTS
+
    jmp ALL_DONE
 
    

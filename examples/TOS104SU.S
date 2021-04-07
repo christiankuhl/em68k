@@ -63,7 +63,7 @@ lFC0080	suba.l	a5,a5
 	move.b	#$C0,2(a0)
 	move.b	#$E,(a0)
 	move.b	#7,2(a0)
-	btst	#0,lFC001D(pc)
+	btst	#0,lFC001D(pc)     
 	beq.s	lFC00B0
 	lea	lFC00AA(pc),a6
 	bra	lFC0DC2

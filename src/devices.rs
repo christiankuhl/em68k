@@ -1,15 +1,19 @@
-use crate::memory::{RamPtr, RAM_SIZE};
-use crate::processor::{Disassembly, CPU};
+use crate::memory::{BusPtr, RAM_SIZE};
+use crate::fields::{OpResult, Size};
+use crate::processor::{Disassembly, CPU, get_bit};
 use std::cell::RefCell;
 use std::mem::discriminant;
 use std::io::{Stdin, Stdout, stdin, stdout};
 use std::rc::Rc;
+use std::time::{Instant, Duration};
 use termion::event::{Event, Key};
 use termion::input::{MouseTerminal, TermRead};
 use termion::raw::{IntoRawMode, RawTerminal};
 use termion::{clear, cursor};
+use minifb::{Window, WindowOptions};
+use std::fs;
 
-pub type DeviceList = Vec<Box<dyn Device>>;
+pub type DeviceList = Vec<(usize, usize, Box<dyn Device>)>;
 
 pub enum Signal {
     Ok,
@@ -20,12 +24,14 @@ pub enum Signal {
 }
 
 pub trait Device: {
-    fn init(&mut self, ram: RamPtr);
-    fn update(&mut self, cpu: &mut CPU) -> Signal;
+    // fn init(&mut self, bus: BusPtr);
+    fn update(&mut self, cpu: &CPU) -> Signal;
+    fn read(&self, address: usize, size: Size) -> OpResult;
+    fn write(&mut self, address: usize, result: OpResult);
 }
 
 pub struct Debugger {
-    ram: RamPtr,
+    // ram: RamPtr,
     disassembly: Disassembly,
     stdin: Stdin,
     stdout: MouseTerminal<RawTerminal<Stdout>>,
@@ -36,14 +42,14 @@ impl Debugger {
     pub fn new() -> Box<Self> {
         let stdout = MouseTerminal::from(stdout().into_raw_mode().unwrap());
         Box::new(Debugger { 
-            ram: Rc::new(RefCell::new(vec![0; RAM_SIZE])), 
+            // ram: Rc::new(RefCell::new(vec![0; RAM_SIZE])), 
             disassembly: Disassembly::new(12),
             stdin: stdin(),
             stdout: stdout,
             code_running: false,
         })
     }
-    fn set_breakpoint(&mut self, cpu: &mut CPU) -> Signal {
+    fn set_breakpoint(&mut self, cpu: &CPU) -> Signal {
         let addr;
         {
             println!("Enter breakpoint address: ");
@@ -80,7 +86,7 @@ impl Debugger {
         }
         DebugCommand::None
     }
-    fn draw_user_interface(&mut self, cpu: &mut CPU) {
+    fn draw_user_interface(&mut self, cpu: &CPU) {
         println!("{}", clear::All);
         print!("{c}{tl}{cpu}", c = clear::All, tl = cursor::Goto(1, 1), cpu = cpu);
         print!("{tr}{dis}", tr = cursor::Goto(10, 10), dis = self.disassembly);
@@ -92,10 +98,10 @@ impl Debugger {
 }
 
 impl Device for Debugger {
-    fn init(&mut self, ram: RamPtr) {
-        self.ram = ram;
-    }
-    fn update(&mut self, cpu: &mut CPU) -> Signal {
+    // fn init(&mut self, ram: RamPtr) {
+    //     self.ram = ram;
+    // }
+    fn update(&mut self, cpu: &CPU) -> Signal {
         if !self.code_running || self.disassembly.breakpoints.contains(&cpu.jmp) {
             self.code_running = false;
             self.disassembly.update(cpu);
@@ -115,13 +121,17 @@ impl Device for Debugger {
             Signal::Ok
         }
     }
+    fn read(&self, address: usize, size: Size) -> OpResult {
+        OpResult::Byte(0)
+    }
+    fn write(&mut self, _address: usize, _result: OpResult) { }
 }
 
 pub struct ASMStream;
 
 impl Device for ASMStream {
-    fn init(&mut self, _ram: RamPtr) {}
-    fn update(&mut self, cpu: &mut CPU) -> Signal {
+    // fn init(&mut self, _ram: RamPtr) {}
+    fn update(&mut self, cpu: &CPU) -> Signal {
         let mut dis = cpu.disassemble(1);
         for mut instr in dis.drain(..) {
             let mut hex = String::new();
@@ -132,6 +142,10 @@ impl Device for ASMStream {
         }
         Signal::Ok
     }
+    fn read(&self, address: usize, size: Size) -> OpResult {
+        OpResult::Byte(0)
+    }
+    fn write(&mut self, _address: usize, _result: OpResult) { }
 }
 
 #[derive(PartialEq)]
@@ -162,3 +176,108 @@ impl Signal {
         }
     }
 }
+
+pub struct Timer {
+    now: Instant
+}
+
+impl Timer {
+    pub fn new() -> Box<Self> {
+        Box::new(Self { now: Instant::now() })
+    }
+}
+
+impl Device for Timer {
+    // fn init(&mut self, _ram: RamPtr) {
+    // }
+    fn update(&mut self, cpu: &CPU) -> Signal {
+        // if self.now.elapsed() > Duration::from_millis(2) {
+        //     ram[0x00fffa21] = ram[0x00fffa21].wrapping_add(1);
+        //     self.now = Instant::now();
+        // }
+        cpu.bus.borrow_mut().write(0x00fffa21, OpResult::Byte(1));
+        Signal::Ok
+    }
+    fn read(&self, address: usize, size: Size) -> OpResult {
+        OpResult::Byte(0)
+    }
+    fn write(&mut self, _address: usize, _result: OpResult) { }
+}
+
+pub struct Monitor {
+    window: Window,
+    buffer: Vec<u32>,
+    counter: usize,
+}
+
+impl Monitor {
+    pub fn new() -> Box<Monitor> {
+        let window = Window::new(
+            "Test - ESC to exit",
+            640,
+            400,
+            WindowOptions::default(),
+        )
+        .unwrap_or_else(|e| {
+            panic!("{}", e);
+        });
+        let buffer: Vec<u32> = vec![0; 640 * 400];
+        Box::new(Monitor { window, buffer, counter: 0 })
+    }
+}
+
+impl Device for Monitor {
+    // fn init(&mut self, _ram: RamPtr) {
+    // }
+    fn update(&mut self, cpu: &CPU) -> Signal {
+        // self.counter = self.counter.wrapping_add(1);
+        // if self.counter % 3600 != 0 {
+        //     return Signal::Ok
+        // }
+        // for (j, p) in self.buffer.iter_mut().enumerate() {
+        //     if &cpu.ram.borrow()[0xff8000 + j / 8] & (1 << (7 - j % 8)) > 0 {
+        //         *p = 0xffffff;
+        //     } else {
+        //         *p = 0;
+        //     }
+        // }
+        // self.window 
+        //     .update_with_buffer(&self.buffer, 640, 400)
+        //     .unwrap();
+        Signal::Ok
+    }
+    fn read(&self, address: usize, size: Size) -> OpResult {
+        OpResult::Byte(0)
+    }
+    fn write(&mut self, _address: usize, _result: OpResult) { }
+}
+
+
+pub struct Floppy {
+    content: Vec<u8>,
+}
+
+impl Floppy {
+    pub fn new(image: &str) -> Box<Self> {
+        let content = fs::read(image).expect("Disk image does not exist!");
+        Box::new(Self { content })
+    }
+}
+
+impl Device for Floppy {
+    // fn init(&mut self, ram: RamPtr) {
+    //     let mut raw_mem = ram.as_ref().borrow_mut();
+    //     println!("{:08x}", 0xfa0000 + self.content.len());
+    //     for (j, &b) in self.content.iter().enumerate() {
+    //         raw_mem[j + 0xfa0000 as usize] = b;
+    //     }
+    // }
+    fn update(&mut self, _cpu: &CPU) -> Signal { 
+        Signal::Ok
+    }
+    fn read(&self, address: usize, size: Size) -> OpResult {
+        OpResult::Byte(0)
+    }
+    fn write(&mut self, _address: usize, _result: OpResult) { }
+}
+

@@ -1,0 +1,63 @@
+F00:0001           ; org $400
+F00:0002           move.b #$45,d1
+               S01:00000000:  12 3C 00 45
+F00:0003           move.b #$17,d2
+               S01:00000004:  14 3C 00 17
+F00:0004           abcd d1,d2
+               S01:00000008:  C5 01
+F00:0005           bcs abcd_fail
+               S01:0000000A:  65 24
+F00:0006           cmpi.b #$62,d2
+               S01:0000000C:  0C 02 00 62
+F00:0007           bne abcd_fail
+               S01:00000010:  66 1E
+F00:0008           abcd d1,d2
+               S01:00000012:  C5 01
+F00:0009           bcc abcd_fail
+               S01:00000014:  64 1A
+F00:0010           cmpi.b #$07,d2
+               S01:00000016:  0C 02 00 07
+F00:0011           bne abcd_fail
+               S01:0000001A:  66 14
+F00:0012           abcd d2,d3
+               S01:0000001C:  C7 02
+F00:0013           bcs abcd_fail
+               S01:0000001E:  65 10
+F00:0014           cmpi.b #$08,d3
+               S01:00000020:  0C 03 00 08
+F00:0015           bne abcd_fail
+               S01:00000024:  66 0A
+F00:0016           move.l d6,d1
+               S01:00000026:  22 06
+F00:0017           ori.b #$10,CCR 
+               S01:00000028:  00 3C 00 10
+F00:0018           nop
+               S01:0000002C:  4E 71
+F00:0019           nop
+               S01:0000002E:  4E 71
+F00:0020       
+F00:0021       abcd_fail: bra abcd_fail    
+               S01:00000030:  60 FE
+
+
+Sections:
+S01  CODE
+
+
+Sources:
+F00  abcd.asm
+
+
+Symbols:
+abcd_fail LAB (0x30) sec=CODE 
+_MOVEMBYTES EXPR(0=0x0) INTERNAL 
+ MOVEMSIZE EXPR(0=0x0) INTERNAL 
+_MOVEMREGS EXPR(0=0x0) INTERNAL 
+__LINE__ EXPR(21=0x15) INTERNAL 
+__FO EXPR(0=0x0) INTERNAL 
+__RS EXPR(0=0x0) INTERNAL 
+REPTN EXPR(-1=0xffffffff) INTERNAL 
+__VASM EXPR(1=0x1) INTERNAL 
+__UNIXFS EXPR(0=0x0) INTERNAL 
+
+There have been no errors.

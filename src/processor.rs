@@ -5,21 +5,23 @@
 
 use crate::fields::{EAMode, OpResult, Size};
 use crate::instructions::Instruction;
-use crate::memory::{MemoryHandle, RamPtr, RegPtr};
+use crate::memory::{MemoryHandle, BusPtr, RegPtr, Bus};
 use crate::parser::parse_instruction;
 use crate::devices::Signal;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::rc::Rc;
+use std::cell::RefCell;
 use termion::{color, cursor};
 
+#[derive(Clone)]
 pub struct CPU {
     pub pc: u32,          // Program counter
     pub sr: u32,          // Status register
     pub dr: [RegPtr; 8],  // Data registers
     pub ar: [RegPtr; 8],  // Address registers
     pub ssp: RegPtr,      // Supervisory stack pointer
-    pub ram: RamPtr,      // Pointer to RAM
+    pub bus: BusPtr,      // Address Bus
     pub nxt: Instruction, // Next instruction (debugger)
     pub prev: u32,        // Last program counter (debugger)
     pub jmp: u32,         // Last jump location (debugger)
@@ -69,8 +71,8 @@ impl CCRFlags {
 }
 
 impl CPU {
-    pub fn new(pc: u32, sr: u32, dr: [RegPtr; 8], ar: [RegPtr; 8], ssp: RegPtr, ram: RamPtr) -> Self {
-        CPU { pc, sr, dr, ar, ssp, ram, nxt: Instruction::NOP, prev: 0, jmp: 0 }
+    pub fn new(pc: u32, sr: u32, dr: [RegPtr; 8], ar: [RegPtr; 8], ssp: RegPtr, bus: BusPtr) -> Self {
+        CPU { pc, sr, dr, ar, ssp, bus, nxt: Instruction::NOP, prev: 0, jmp: 0 }
     }
     pub fn clock_cycle(&mut self) -> Signal {
         let next_instruction = self.nxt;
@@ -180,9 +182,8 @@ impl CPU {
         self.ccr(CCR::S)
     }
     pub fn lookahead(&self, offset: isize) -> u16 {
-        let raw_mem = self.ram.borrow();
         let ptr = (self.pc as isize + 2 * offset) as usize;
-        u16::from_be_bytes([raw_mem[ptr], raw_mem[ptr + 1]])
+        self.bus.borrow().read(ptr, Size::Word).inner() as u16
     }
     pub fn ccr(&self, bit: CCR) -> bool {
         self.sr & (1 << (bit as u8)) != 0
@@ -205,31 +206,30 @@ impl CPU {
             panic!("Invalid addressing mode!")
         }
     }
-    pub fn disassemble(&mut self, lines: usize) -> VecDeque<(u32, Vec<u16>, String)> {
-        let initial_pc = self.pc;
+    pub fn disassemble(&self, lines: usize) -> VecDeque<(u32, Vec<u16>, String)> {
+        let mut cpu = (*self).clone();
         let mut disassembly = VecDeque::with_capacity(lines);
         let mut opcodes = Vec::new();
-        let length = (self.pc - self.jmp) / 2;
+        let length = (cpu.pc - cpu.jmp) / 2;
         for j in 0..length {
             opcodes.push(self.lookahead(j as isize - length as isize));
         }
-        disassembly.push_back((self.jmp, opcodes, self.nxt.as_asm(self)));
+        disassembly.push_back((cpu.jmp, opcodes, cpu.nxt.as_asm(self)));
         for _ in 0..lines - 1 {
-            let pc = self.pc;
+            let pc = cpu.pc;
             let mut opcodes = Vec::new();
-            let opcode = self.next_instruction();
-            let instr = parse_instruction(opcode, self);
-            let length = (self.pc - pc) / 2;
+            let opcode = cpu.next_instruction();
+            let instr = parse_instruction(opcode, &mut cpu);
+            let length = (cpu.pc - pc) / 2;
             for j in 0..length {
-                opcodes.push(self.lookahead(j as isize - length as isize));
+                opcodes.push(cpu.lookahead(j as isize - length as isize));
             }
             let instr_txt = match instr {
                 Some(instruction) => instruction.as_asm(self),
-                None => String::from("ERR"),
+                None => String::from("dc"),
             };
             disassembly.push_back((pc, opcodes, instr_txt));
         }
-        self.pc = initial_pc;
         disassembly
     }
 }
@@ -293,7 +293,7 @@ impl Disassembly {
     pub fn new(lines: usize) -> Self {
         Self { disassembly: VecDeque::with_capacity(lines), cursor: 0, length: lines, breakpoints: HashSet::new() }
     }
-    pub fn update(&mut self, cpu: &mut CPU) {
+    pub fn update(&mut self, cpu: &CPU) {
         if self.disassembly.is_empty() {
             self.disassembly = cpu.disassemble(self.length);
         }
@@ -380,3 +380,4 @@ impl fmt::Display for Disassembly {
         write!(f, "{}", result)
     }
 }
+

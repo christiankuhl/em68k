@@ -4,11 +4,11 @@ pub const BASE_ADDRESS: u32 = 0xfc0000;
 pub const START_ADDRESS: u32 = 0xfc0030;
 
 // Initial Memory Layout Atari ST
-pub const MEMORY_LAYOUT: [(usize, OpResult); 12] = [
+pub const MEMORY_LAYOUT: [(usize, OpResult); 13] = [
     //   $000.L      Reset initial SSP value
     (0x0, Long(0x0104)),
     //   $004.L      Reset initial PC address
-    (0x0, Long(START_ADDRESS)),
+    (0x4, Long(START_ADDRESS)),
     //   $028.L      Line 1010 (Line A routine)
     // Line A emulator $EB9A
     (0x28, Long(0xeb9a)),
@@ -23,17 +23,19 @@ pub const MEMORY_LAYOUT: [(usize, OpResult); 12] = [
     //   $424.B      Memcntlr (Memory controller low nibble)
     (0x424, Byte(0x0)),
     //   $426.L      Resvalid (#$31415926 to jump through 'resvector')
-    (0x426, Long(0x0)),
+    (0x426, Long(0x31415962)),
     //   $42A.L      Resvector (System reset bailout vector)
     (0x42a, Long(START_ADDRESS)),
     //   $42E.L      Phystop (Physical RAM top)
-    (0x42e, Long(0x4000000)),
+    (0x42e, Long(0x1000000)),
     //   $43A.L      Memval2 (#$237698AA)
     (0x43a, Long(0x237698aa)),
     //   $51A.L      Memval3 (#$5555AAAA)
     (0x51a, Long(0x5555aaaa)),
+    //   $4A6.W      _Nflops (Number of floppies attached)
+    (0x4a6, Word(0x1)),
 ];
-    
+
     // Set trap vectors:
     // TRAP #1 GEMDOS $965E
     // TRAP #2 GEM $2A338
@@ -204,7 +206,6 @@ pub const MEMORY_LAYOUT: [(usize, OpResult); 12] = [
 //   $49A.L      Themd (M_own)
 //   $49E.L      _Md
 //   $4A2.L      Savptr (BIOS register save area pointer)
-//   $4A6.W      _Nflops (Number of floppies attached)
 //   $4A8.L      Con_state (State of Conout() parser)
 //   $4AC.W      Save_row (Save row# for x-y addressing)
 //   $4AE.L      Save_contxt (Pointer to saved processor context)

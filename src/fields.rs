@@ -289,7 +289,7 @@ impl EAMode {
             }
             Self::AbsoluteShort(ptr) => format!("({:04x}).w", ptr),
             Self::AbsoluteLong(ptr) => format!("({:08x}).w", ptr),
-            Self::PCDisplacement(displ, _) => format!("({:04x},pc)", SignedForDisplay(displ)),
+            Self::PCDisplacement(displ, pc) => format!("({:04x},pc)[{:08x}]", SignedForDisplay(displ), pc as i32 + displ),
             Self::Immediate(data) => format!("#{:}", data),
             Self::PCIndex8Bit(register, displacement, size, scale, da, _) => {
                 let da_flag = if da == 0 { "d" } else { "a" };
@@ -438,26 +438,26 @@ impl PackedBCD {
     pub fn from(res: OpResult) -> Self {
         match res {
             OpResult::Byte(b) => {
-                let mut ones = b & 0xf;
-                let mut tens = b & 0xf0 >> 4;
-                if ones > 9 {
-                    ones = (ones + 6) % 16;
-                }
-                if tens > 9 {
-                    tens = (tens + 6) % 16;
-                }
-                // if b & 0xf > 9 || (b & 0xf0 >> 4) > 9 {
-                //     panic!("Invalid BCD encoding!")
-                // };
+                let ones = b & 0xf;
+                let tens = (b & 0xf0) >> 4;
                 Self(10 * tens + ones)
             }
             _ => panic!("Unsupported operation!"),
         }
     }
     pub fn pack(&self) -> OpResult {
-        let low_digit = self.0 % 10;
-        let high_digit = self.0 / 10;
-        OpResult::Byte(low_digit + (high_digit << 4))
+        let mut ones = self.0 & 0xf;
+        let mut carry = 0;
+        let mut tens = (self.0 & 0xf0) >> 4;
+        if ones > 9 {
+            ones = (ones + 6) % 16;
+            carry = 1;
+        }
+        tens += carry;
+        if tens > 9 {
+            tens = (tens + 6) % 16;
+        }
+        OpResult::Byte(ones + (tens << 4))
     }
     pub fn add(&self, other: Self, extend: bool) -> (Self, bool) {
         let result = self.0 + other.0 + extend as u8;
