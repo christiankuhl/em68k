@@ -107,7 +107,7 @@ const _SUBX: usize = 0x9;
 
 // Specificity 7
 // - Signature 4, 3, 3, 3, 3
-const _ADDA: usize = 0xc;
+const _ADDA: usize = 0xd;
 const _SUBA: usize = 0x9;
 const _CMPA: usize = 0xb;
 const _BCHG: usize = 0x5;

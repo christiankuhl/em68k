@@ -8,6 +8,7 @@ pub const RAM_SIZE: usize = 1 << 24;
 
 pub type BusPtr = Rc<RefCell<Bus>>;
 pub type RegPtr = Rc<RefCell<u32>>; 
+pub type MemoryRange = Vec<(usize, usize)>;
 
 pub struct MemoryHandle {
     reg: Option<RegPtr>,
@@ -22,7 +23,7 @@ impl MemoryHandle {
     }
     pub fn read(&self, size: Size) -> OpResult {
         if let Some(ptr) = self.ptr {
-            self.bus.borrow().read(ptr, size)
+            self.bus.borrow_mut().read(ptr, size)
         } else if let Some(reg) = &self.reg {
             let raw_mem = reg.as_ref().borrow();
             size.from(*raw_mem)
@@ -88,7 +89,7 @@ impl Device for RAM {
     fn update(&mut self, _cpu: &CPU) -> Signal {
         Signal::Ok
     }
-    fn read(&self, address: usize, size: Size) -> OpResult {
+    fn read(&mut self, address: usize, size: Size) -> OpResult {
         let ptr = address & (RAM_SIZE - 1);
         match size {
             Size::Byte => OpResult::Byte(self.mem[ptr]),
@@ -124,28 +125,31 @@ impl Bus {
     pub fn new() -> Self {
         Bus { devices: DeviceList::new() }
     }
-    pub fn attach(&mut self, device: Box<dyn Device>, from: usize, to: usize) {
-        self.devices.push((from, to, device));
+    pub fn attach(&mut self, device: Box<dyn Device>, range: MemoryRange) {
+        self.devices.push((range, device));
     }
-    pub fn read(&self, address: usize, size: Size) -> OpResult {
-        for (fromaddr, toaddr, device) in &self.devices {
-            if *fromaddr <= address && *toaddr >= address {
-                return device.read(address, size)
+    pub fn read(&mut self, address: usize, size: Size) -> OpResult {
+        for (range, device) in &mut self.devices {
+            for (fromaddr, toaddr) in range {
+                if *fromaddr <= address && *toaddr > address {
+                    return device.read(address, size)
+                }
             }
         } 
-        OpResult::Byte(0)
+        panic!(format!("Address {:08x} is not assigned!", address))
     }
     pub fn write(&mut self, address: usize, result: OpResult) {
-        for (fromaddr, toaddr, device) in &mut self.devices {
-            if *fromaddr <= address && *toaddr >= address {
-                device.write(address, result);
-                return
+        let mut written = false;
+        for (range, device) in &mut self.devices {
+            for (fromaddr, toaddr) in range {
+                if *fromaddr <= address && *toaddr > address {
+                    device.write(address, result);
+                    written = true;
+                }
             }
-        } 
-    }
-    pub fn update(&mut self, cpu: &CPU) {
-        for (fromaddr, toaddr, device) in &mut self.devices {
-            device.update(cpu);
+        }
+        if !written {
+            panic!(format!("Address {:08x} is not assigned!", address))
         }
     }
 }

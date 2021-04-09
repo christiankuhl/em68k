@@ -5,14 +5,16 @@
 
 use crate::fields::{EAMode, OpResult, Size};
 use crate::instructions::Instruction;
-use crate::memory::{MemoryHandle, BusPtr, RegPtr, Bus};
+use crate::memory::{MemoryHandle, BusPtr, RegPtr};
 use crate::parser::parse_instruction;
 use crate::devices::Signal;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::rc::Rc;
-use std::cell::RefCell;
-use termion::{color, cursor};
+use std::io;
+use std::io::prelude::*;
+use termion::{clear, color, cursor};
+
 
 #[derive(Clone)]
 pub struct CPU {
@@ -87,7 +89,6 @@ impl CPU {
             self.nxt = instruction;
             Signal::Ok
         } else {
-            // panic!("Illegal instruction!");
             self.nxt = Instruction::NOP;
             Signal::Ok
         }
@@ -183,7 +184,7 @@ impl CPU {
     }
     pub fn lookahead(&self, offset: isize) -> u16 {
         let ptr = (self.pc as isize + 2 * offset) as usize;
-        self.bus.borrow().read(ptr, Size::Word).inner() as u16
+        self.bus.borrow_mut().read(ptr, Size::Word).inner() as u16
     }
     pub fn ccr(&self, bit: CCR) -> bool {
         self.sr & (1 << (bit as u8)) != 0
@@ -381,3 +382,153 @@ impl fmt::Display for Disassembly {
     }
 }
 
+pub struct Debugger {
+    disassembly: Disassembly,
+    code_running: bool,
+    last_cmd: DebugCommand,
+    variables: HashSet<u32>,
+}
+
+#[derive(PartialEq, Clone)]
+enum DebugCommand {
+    Quit,
+    SetBreakpoint(Option<String>),
+    DeleteBreakpoint(Option<String>),
+    Continue,
+    Step,
+    Jump(Option<String>),
+    Watch(Option<String>),
+    Unwatch(Option<String>),
+}
+
+impl Debugger {
+    pub fn new() -> Box<Self> {
+        Box::new(Debugger { 
+            disassembly: Disassembly::new(12),
+            code_running: false,
+            last_cmd: DebugCommand::Step,
+            variables: HashSet::new(),
+        })
+    }
+    fn set_breakpoint(&mut self, breakpoint: &Option<String>, cpu: &CPU, delete: bool) {
+        if let Some(address) = parse_address(breakpoint) {
+            if delete {
+                self.disassembly.breakpoints.remove(&address);
+            } else {
+                self.disassembly.breakpoints.insert(address);
+            }
+            self.draw_user_interface(cpu);
+            if delete {
+                println!("Breakpoint deleted.");
+            } else {
+                println!("Breakpoint created.");
+            }
+        } else {
+            self.draw_user_interface(cpu);
+            println!("Invalid address!");
+        }
+    }
+    fn watch_address(&mut self, address: &Option<String>, cpu: &CPU, watch_delete: bool) {
+        if let Some(address) = parse_address(address) {
+            if watch_delete {
+                self.variables.insert(address);
+            } else {
+                self.variables.remove(&address);
+            }
+            self.draw_user_interface(cpu);
+        } else {
+            self.draw_user_interface(cpu);
+            println!("Invalid address!");
+        }
+    }
+    fn get_command(&mut self) -> DebugCommand {
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+        let mut cmd = input.split_whitespace();
+        match cmd.next() {
+            Some("q") => return DebugCommand::Quit,
+            Some("s") | Some("n") => return DebugCommand::Step,
+            Some("b") => return DebugCommand::SetBreakpoint(cmd.next().map(String::from)),
+            Some("d") => return DebugCommand::DeleteBreakpoint(cmd.next().map(String::from)),
+            Some("j") => return DebugCommand::Jump(cmd.next().map(String::from)),
+            Some("w") => return DebugCommand::Watch(cmd.next().map(String::from)),
+            Some("u") => return DebugCommand::Unwatch(cmd.next().map(String::from)),
+            Some("c") => return DebugCommand::Continue,
+            _ => return self.last_cmd.clone(),
+        }
+    }
+    fn draw_user_interface(&mut self, cpu: &CPU) {
+        println!("{}", clear::All);
+        print!("{c}{tl}{cpu}", c = clear::All, tl = cursor::Goto(1, 1), cpu = cpu);
+        print!("{tr}{dis}", tr = cursor::Goto(10, 10), dis = self.disassembly);
+        print!("{r} Next instruction: {n}", r = cursor::Goto(36, 3), n = cpu.nxt.as_asm(cpu));
+        if !self.variables.is_empty() {
+            println!("{r}Watched memory locations", r = cursor::Goto(1, 6 + self.disassembly.length as u16));
+            for var in self.variables.iter() {
+                println!("{:08x}: {}", var, cpu.bus.borrow_mut().read(*var as usize, Size::Long))
+            }
+        }
+        println!("{r}\nDebugger attached. Enter n to single step, c to continue, b/d <addr> to enter/delete a breakpoint at addr, j <addr> to jump to <addr> or q to quit.", 
+            r = cursor::Goto(1, (7 + self.disassembly.length + self.variables.len()) as u16));
+        print!("{r}> ", r = cursor::Goto(1, (9 + self.disassembly.length + self.variables.len()) as u16));
+        io::stdout().flush().expect("");
+    }
+    pub fn update(&mut self, cpu: &mut CPU) -> Signal {
+        if !self.code_running || self.disassembly.breakpoints.contains(&cpu.jmp) {
+            self.code_running = false;
+            self.disassembly.update(cpu);
+            self.draw_user_interface(cpu);
+            let cmd = self.get_command();
+            match &cmd {
+                DebugCommand::Quit => Signal::Quit,
+                DebugCommand::SetBreakpoint(b) => {
+                    self.set_breakpoint(&b, cpu, false);
+                    Signal::NoOp
+                },
+                DebugCommand::DeleteBreakpoint(b) => {
+                    self.set_breakpoint(&b, cpu, true);
+                    Signal::NoOp
+                },
+                DebugCommand::Watch(a) => {
+                    self.watch_address(&a, cpu, true);
+                    Signal::NoOp
+                },
+                DebugCommand::Unwatch(a) => {
+                    self.watch_address(&a, cpu, false);
+                    Signal::NoOp
+                },
+                DebugCommand::Continue => {
+                    self.code_running = true;
+                    Signal::Ok
+                },
+                DebugCommand::Step => {
+                    self.last_cmd = cmd;
+                    Signal::Ok
+                }
+                DebugCommand::Jump(a) => {
+                    if let Some(address) = parse_address(a) {
+                        cpu.pc = address;
+                        self.last_cmd = cmd;
+                        Signal::Ok
+                    } else {
+                        Signal::NoOp
+                    }
+                }
+            }
+        } else {
+            Signal::Ok
+        }
+    }
+}
+
+fn parse_address(address: &Option<String>) -> Option<u32> {
+    match address {
+        Some(addr) => {
+            match u32::from_str_radix(&addr, 16) {
+                Ok(address) => Some(address),
+                Err(_) => None
+            }
+        }
+        None => None
+    }
+}

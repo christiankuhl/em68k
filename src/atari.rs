@@ -1,10 +1,11 @@
 use crate::fields::{OpResult, OpResult::*};
 
+pub const RAM_SIZE: u32 = 0x400000;
 pub const BASE_ADDRESS: u32 = 0xfc0000;
 pub const START_ADDRESS: u32 = 0xfc0030;
 
 // Initial Memory Layout Atari ST
-pub const MEMORY_LAYOUT: [(usize, OpResult); 13] = [
+pub const MEMORY_LAYOUT: [(usize, OpResult); 14] = [
     //   $000.L      Reset initial SSP value
     (0x0, Long(0x0104)),
     //   $004.L      Reset initial PC address
@@ -27,14 +28,16 @@ pub const MEMORY_LAYOUT: [(usize, OpResult); 13] = [
     //   $42A.L      Resvector (System reset bailout vector)
     (0x42a, Long(START_ADDRESS)),
     //   $42E.L      Phystop (Physical RAM top)
-    (0x42e, Long(0x1000000)),
+    (0x42e, Long(RAM_SIZE)),
     //   $43A.L      Memval2 (#$237698AA)
     (0x43a, Long(0x237698aa)),
     //   $51A.L      Memval3 (#$5555AAAA)
     (0x51a, Long(0x5555aaaa)),
     //   $4A6.W      _Nflops (Number of floppies attached)
     (0x4a6, Word(0x1)),
-];
+    //   $44E.L      _V_bas_ad (Screen memory base pointer)
+    (0x44e, Long(0x78000)),
+    ];
 
     // Set trap vectors:
     // TRAP #1 GEMDOS $965E
@@ -181,7 +184,6 @@ pub const MEMORY_LAYOUT: [(usize, OpResult); 13] = [
 //   $44B.B      Unassigned
 //   $44C.B      Sshiftmd (Shadow shiftmode hardware register)
 //   $44D.B      Unassigned
-//   $44E.L      _V_bas_ad (Screen memory base pointer)
 //   $452.W      Vblsem (Vertical blank mutual exclusionm semaphore)
 //   $454.W      Nvbls (No. of longwords 'vblqueue' points to)
 //   $456.L      _Vblqueue (Vblank handler pointer to pointers)

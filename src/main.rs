@@ -5,11 +5,11 @@ mod instructions;
 mod memory;
 mod parser;
 mod processor;
-use memory::{RAM, RAM_SIZE, BusPtr, Bus};
-use processor::{CPU, DisassemblySection};
+use memory::{RAM, Bus};
+use processor::{CPU, Debugger, DisassemblySection};
 mod conversions;
 mod devices;
-use devices::{Debugger, DeviceList, Signal, ASMStream, Timer, Monitor, Floppy};
+use devices::{Signal, Timer, Monitor};
 mod fields;
 use fields::{EAMode, OpResult};
 mod atari;
@@ -17,39 +17,32 @@ use atari::*;
 
 pub struct Emulator {
     cpu: CPU,
-    bus: BusPtr,
 }
 
 impl Emulator {
     pub fn run(&mut self, program: &str) {
         self.initialize(program);
-        // let mut detached = Vec::new();
-        // let mut attached = DeviceList::new();
+        let mut debugger = Debugger::new();
+        let mut idle = false;
         loop {
-            match self.cpu.clock_cycle() {
-                Signal::Quit => break,
-                _ => {}
+            if !idle {
+                match self.cpu.clock_cycle() {
+                    Signal::Quit => break,
+                    _ => {}
+                }
+            } else {
+                idle = false;
             }
-            {
-                // self.bus.borrow_mut().update(&self.cpu);
-            }
-            // for (j, device) in self.devices.iter_mut().enumerate() {
-            //     match device.2.update(&mut self.cpu) {
-            //         Signal::Quit => return,
-            //         Signal::Attach(mut new_device) => {
-            //             // new_device.init(Rc::clone(&self.ram));
-            //             // attached.push(new_device)
-            //         }
-            //         Signal::Detach => {} //detached.push(j),
-            //         Signal::Ok | Signal::NoOp=> (),
-            //     };
-            // }
-            // for j in detached.drain(0..) {
-                // self.devices.remove(j);
-            // }
-            // for device in attached.drain(0..) {
-                // self.devices.push(device);
-            // }
+            match debugger.update(&mut self.cpu) {
+                Signal::Quit => return,
+                Signal::Attach(_) => {}
+                Signal::Detach => {}
+                Signal::NoOp => {
+                    idle = true;
+                }
+                Signal::Ok => (),
+            };
+            
         }
     }
     fn initialize(&mut self, progname: &str) {
@@ -68,7 +61,6 @@ impl Emulator {
         }
     }
     pub fn new(bus: Bus) -> Emulator {
-        // let ram = RamPtr::new(RefCell::new(vec![0u8; RAM_SIZE]));
         let ar = [
             Rc::new(RefCell::new(0)),
             Rc::new(RefCell::new(0)),
@@ -92,7 +84,7 @@ impl Emulator {
         let ssp = Rc::new(RefCell::new(0));
         let busptr = Rc::new(RefCell::new(bus));
         let cpu = CPU::new(0, 0, dr, ar, ssp, Rc::clone(&busptr));
-        Emulator { cpu: cpu, bus: busptr }
+        Emulator { cpu: cpu }
     }
     fn disassemble(&mut self, progname: &str) -> DisassemblySection {
         let program = fs::read(progname).expect("Program does not exist!");
@@ -104,36 +96,17 @@ impl Emulator {
 }
 
 fn main() {
-    // let mut dev = DeviceList::new();
-    // dev.push(Debugger::new());
-    // dev.push(Timer::new());
-    // dev.push(Monitor::new());
-    // dev.push(Floppy::new("examples/ST0001 Mono Demos.st"));
-    // dev.push(Box::new(ASMStream));
     let mut bus = Bus::new();
-    bus.attach(RAM::new(), 0x0, 0xff7fff);
-    bus.attach(Monitor::new(), 0xff8000, 0xffffff);
-    // bus.attach(Debugger::new(), 0x0, 0x0);
-    bus.attach(Box::new(ASMStream), 0x0, 0x0);
+    bus.attach(Monitor::new(), vec![(0x38000, 0xbfd00)]);
+    bus.attach(RAM::new(), vec![(0x0, 0xff7fff)]);
+    // Timer A
+    bus.attach(Timer::new(0xfffffa19, 0, 2457600.0), vec![(0xfffffa1f, 0xfffffa20), (0xfffffa19, 0xfffffa1a)]);
+    // Timer B
+    bus.attach(Timer::new(0xfffffa1b, 0, 50.0), vec![(0xfffffa1b, 0xfffffa1c), (0xfffffa21, 0xfffffa22)]);
+    // Timer C 
+    bus.attach(Timer::new(0xfffffa1d, 4, 200.0), vec![(0xfffffa1d, 0xfffffa1e), (0xfffffa23, 0xfffffa24)]);
+    // Timer D
+    bus.attach(Timer::new(0xfffffa1d, 0, 2457600.0), vec![(0xfffffa1d, 0xfffffa1e), (0xfffffa25, 0xfffffa26)]);
     let mut em = Emulator::new(bus);
-
-    // let mut result = String::new();
-    // for line in em.disassemble("tos/TOS104GE.IMG").iter() {
-    //     let mut out = String::new();
-    //     for word in &line.1 {
-    //         out.push_str(&format!("{:04x} ", word));
-    //     }
-    //     result.push_str(&format!(
-    //         "{a:08x}  {o:<25} {i:<32}\n",
-    //         o = out,
-    //         i = line.2,
-    //         a = line.0,
-    //     ));
-    // }
-    // fs::write("examples/tos.asm", result);
-
-    // em.run("examples/ballerburg/BALLER.PRG");
-    // em.run("examples/abcd.bin");
-    // em.run("tests/opcode_tests.bin");
     em.run("tos/TOS104GE.IMG");
 }

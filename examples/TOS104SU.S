@@ -68,16 +68,16 @@ lFC0080	suba.l	a5,a5
 	lea	lFC00AA(pc),a6
 	bra	lFC0DC2
 
-lFC00AA	move.b	#2,-$7DF6(a5)    * Vfreq
-lFC00B0	lea	-$7DC0(a5),a1
+lFC00AA	move.b	#2,-$7DF6(a5)    * Vfreq = 50 Hz
+lFC00B0	lea	-$7DC0(a5),a1 *  Palette base address
 	move.w	#$F,d0
 	lea	lFC068A(pc),a0   * Init palette
 lFC00BC	move.w	(a0)+,(a1)+
 	dbf	d0,lFC00BC
-	move.b	#1,-$7DFF(a5)
-	clr.b	-$7DFD(a5)
-	move.b	$424(a5),d6
-	move.l	$42E(a5),d5
+	move.b	#1,-$7DFF(a5) * VBase high.b = 1
+	clr.b	-$7DFD(a5) * Vbase medium.b = 0
+	move.b	$424(a5),d6 * Memctrl low nibble
+	move.l	$42E(a5),d5 * phystop
 	lea	lFC00DC(pc),a6
 	bra	lFC066A
 
@@ -166,21 +166,21 @@ lFC01BC	movem.l	d0-d3,-(a0)
 	move.l	#$5555AAAA,$51A(a5)
 lFC01F2	suba.l	a5,a5
 	movea.l	#$980,a0
-	movea.l	#$10000,a1
-	moveq	#0,d0
+	movea.l	#$10000,a1 
+	moveq	#0,d0 * Clear memory
 lFC0202	move.w	d0,(a0)+
 	cmpa.l	a0,a1
 	bne.s	lFC0202
-	movea.l	$42E(a5),a0
-	suba.l	#$8000,a0
-	move.w	#$7FF,d1
-	move.l	a0,$44E(a5)
-	move.b	$44F(a5),-$7DFF(a5)
-	move.b	$450(a5),-$7DFD(a5)
-lFC0226	move.l	d0,(a0)+
-	move.l	d0,(a0)+
-	move.l	d0,(a0)+
-	move.l	d0,(a0)+
+	movea.l	$42E(a5),a0 * phystop
+	suba.l	#$8000,a0 * phystop - 0x8000
+	move.w	#$7FF,d1 * 2047
+	move.l	a0,$44E(a5) * screen memory base pointer = phystop - 0x8000
+	move.b	$44F(a5),-$7DFF(a5) * Set this to the video card
+	move.b	$450(a5),-$7DFD(a5) * ...
+lFC0226	move.l	d0,(a0)+  * Clear screen memory
+	move.l	d0,(a0)+ * ...
+	move.l	d0,(a0)+ * ...
+	move.l	d0,(a0)+ * ...
 	dbf	d1,lFC0226
 	movea.l	lFC0014(pc),a0      * AES descriptor
 	cmpi.l	#$87654321,(a0)
@@ -188,7 +188,7 @@ lFC0226	move.l	d0,(a0)+
 	lea	lFC0008(pc),a0
 lFC0242	move.l	4(a0),$4FA(a5)
 	move.l	8(a0),$4FE(a5)
-	move.l	#lFC16BA,$46A(a5)
+	move.l	#lFC16BA,$46A(a5) 
 	move.l	#lFC1A24,$476(a5)
 	move.l	#lFC173C,$472(a5)
 	move.l	#lFC18EC,$47E(a5)
@@ -214,10 +214,10 @@ lFC0242	move.l	4(a0),$4FA(a5)
 	bsr	lFC0E62
 	lea	lFC07A0(pc),a3
 	lea	lFC0652(pc),a4
-	cmpi.l	#$FA52235F,$FA0000   * Cart
+fc02fa	cmpi.l	#$FA52235F,$FA0000   * Cart
 	beq.s	lFC032C
 	lea	lFC0B0A(pc),a1
-	adda.l	#$2000000,a1
+fc030a	adda.l	#$2000000,a1
 	lea	8,a0
 	move.w	#$3D,d0
 lFC031A	move.l	a1,(a0)+

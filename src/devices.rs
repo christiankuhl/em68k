@@ -1,19 +1,14 @@
-use crate::memory::{BusPtr, RAM_SIZE};
+use crate::memory::MemoryRange;
 use crate::fields::{OpResult, Size};
-use crate::processor::{Disassembly, CPU, get_bit};
-use std::cell::RefCell;
+use crate::processor::CPU;
 use std::mem::discriminant;
-use std::io::{Stdin, Stdout, stdin, stdout};
-use std::rc::Rc;
-use std::time::{Instant, Duration};
-use termion::event::{Event, Key};
-use termion::input::{MouseTerminal, TermRead};
-use termion::raw::{IntoRawMode, RawTerminal};
-use termion::{clear, cursor};
 use minifb::{Window, WindowOptions};
+use std::time::Instant;
 use std::fs;
 
-pub type DeviceList = Vec<(usize, usize, Box<dyn Device>)>;
+const CLKFREQ: f64 = 2457600.0;
+
+pub type DeviceList = Vec<(MemoryRange, Box<dyn Device>)>;
 
 pub enum Signal {
     Ok,
@@ -26,106 +21,10 @@ pub enum Signal {
 pub trait Device: {
     // fn init(&mut self, bus: BusPtr);
     fn update(&mut self, cpu: &CPU) -> Signal;
-    fn read(&self, address: usize, size: Size) -> OpResult;
+    fn read(&mut self, address: usize, size: Size) -> OpResult;
     fn write(&mut self, address: usize, result: OpResult);
 }
 
-pub struct Debugger {
-    // ram: RamPtr,
-    disassembly: Disassembly,
-    stdin: Stdin,
-    stdout: MouseTerminal<RawTerminal<Stdout>>,
-    code_running: bool,
-}
-
-impl Debugger {
-    pub fn new() -> Box<Self> {
-        let stdout = MouseTerminal::from(stdout().into_raw_mode().unwrap());
-        Box::new(Debugger { 
-            // ram: Rc::new(RefCell::new(vec![0; RAM_SIZE])), 
-            disassembly: Disassembly::new(12),
-            stdin: stdin(),
-            stdout: stdout,
-            code_running: false,
-        })
-    }
-    fn set_breakpoint(&mut self, cpu: &CPU) -> Signal {
-        let addr;
-        {
-            println!("Enter breakpoint address: ");
-            self.stdout.suspend_raw_mode().expect("Error exiting raw mode!");
-            let mut stdin = self.stdin.lock();
-            addr = stdin.read_line().unwrap().expect("Error reading breakpoint!");
-        }
-        match u32::from_str_radix(&addr, 16) {
-            Ok(address) => {
-                self.disassembly.breakpoints.insert(address);
-                self.draw_user_interface(cpu);
-                println!("Breakpoint created.");
-            },
-            Err(_) => {
-                self.draw_user_interface(cpu);
-                println!("Invalid address!");
-            }
-        }
-        Signal::NoOp        
-    }
-    fn get_command(&mut self) -> DebugCommand {
-        self.stdout.activate_raw_mode().expect("Error entering raw mode!");
-        let stdin = self.stdin.lock();
-        for c in stdin.events() {
-            let evt = c.unwrap();
-            match evt {
-                Event::Key(Key::Char(' ')) => return DebugCommand::Step,
-                Event::Key(Key::Char('q')) => return DebugCommand::Quit,
-                Event::Key(Key::Char('b')) => return DebugCommand::SetBreakpoint,
-                Event::Key(Key::Char('d')) => return DebugCommand::DeleteBreakpoint,
-                Event::Key(Key::Char('c')) => return DebugCommand::Continue,
-                _ => return DebugCommand::None,
-            }
-        }
-        DebugCommand::None
-    }
-    fn draw_user_interface(&mut self, cpu: &CPU) {
-        println!("{}", clear::All);
-        print!("{c}{tl}{cpu}", c = clear::All, tl = cursor::Goto(1, 1), cpu = cpu);
-        print!("{tr}{dis}", tr = cursor::Goto(10, 10), dis = self.disassembly);
-        print!("{r} Next instruction: {n}", r = cursor::Goto(36, 3), n = cpu.nxt.as_asm(cpu));
-        println!("{r}\nDebugger attached. Press space to single step, c to continue, b/d to enter/delete a breakpoint or q to quit.", 
-            r = cursor::Goto(1, 6 + self.disassembly.length as u16));
-        println!("{}", self.code_running);
-    }
-}
-
-impl Device for Debugger {
-    // fn init(&mut self, ram: RamPtr) {
-    //     self.ram = ram;
-    // }
-    fn update(&mut self, cpu: &CPU) -> Signal {
-        if !self.code_running || self.disassembly.breakpoints.contains(&cpu.jmp) {
-            self.code_running = false;
-            self.disassembly.update(cpu);
-            self.draw_user_interface(cpu);
-            match self.get_command() {
-                DebugCommand::Quit => Signal::Quit,
-                DebugCommand::SetBreakpoint => {
-                    self.set_breakpoint(cpu)
-                },
-                DebugCommand::Continue => {
-                    self.code_running = true;
-                    Signal::Ok
-                }
-                _ => Signal::NoOp
-            }
-        } else {
-            Signal::Ok
-        }
-    }
-    fn read(&self, address: usize, size: Size) -> OpResult {
-        OpResult::Byte(0)
-    }
-    fn write(&mut self, _address: usize, _result: OpResult) { }
-}
 
 pub struct ASMStream;
 
@@ -142,20 +41,10 @@ impl Device for ASMStream {
         }
         Signal::Ok
     }
-    fn read(&self, address: usize, size: Size) -> OpResult {
+    fn read(&mut self, _address: usize, _size: Size) -> OpResult {
         OpResult::Byte(0)
     }
     fn write(&mut self, _address: usize, _result: OpResult) { }
-}
-
-#[derive(PartialEq)]
-enum DebugCommand {
-    Quit,
-    SetBreakpoint,
-    DeleteBreakpoint,
-    Continue,
-    Step,
-    None,
 }
 
 impl PartialEq for Signal {
@@ -178,36 +67,79 @@ impl Signal {
 }
 
 pub struct Timer {
-    now: Instant
+    data: u8,
+    value: u8,
+    counter: u8,
+    now: Instant,
+    ctrl: ControlMode,
+    ctrl_address: usize,
+    offset: usize,
+    clockfreq: f64,
 }
 
 impl Timer {
-    pub fn new() -> Box<Self> {
-        Box::new(Self { now: Instant::now() })
+    pub fn new(ctrl: usize, offset: usize, clockfreq: f64) -> Box<Self> {
+        Box::new(Self { now: Instant::now(), 
+                        value: 0, 
+                        data: 0, 
+                        counter: 0, 
+                        ctrl_address: ctrl, 
+                        ctrl: ControlMode::Stop(0), 
+                        offset: offset,
+                        clockfreq: clockfreq })
     }
 }
 
 impl Device for Timer {
-    // fn init(&mut self, _ram: RamPtr) {
-    // }
-    fn update(&mut self, cpu: &CPU) -> Signal {
-        // if self.now.elapsed() > Duration::from_millis(2) {
-        //     ram[0x00fffa21] = ram[0x00fffa21].wrapping_add(1);
-        //     self.now = Instant::now();
-        // }
-        cpu.bus.borrow_mut().write(0x00fffa21, OpResult::Byte(1));
+    fn update(&mut self, _cpu: &CPU) -> Signal {
         Signal::Ok
     }
-    fn read(&self, address: usize, size: Size) -> OpResult {
-        OpResult::Byte(0)
+    fn read(&mut self, address: usize, _size: Size) -> OpResult {
+        if address != self.ctrl_address {
+            match self.ctrl {
+                ControlMode::Delay(delay, _) | ControlMode::PulseExtension(delay, _) => {
+                    let elapsed = self.now.elapsed().as_nanos();
+                    let pulses = (elapsed as f64 * CLKFREQ / 1e9) as u8;
+                    self.value = self.value.wrapping_sub(pulses / delay);
+                    if self.value == 0 {
+                        self.value = self.data;
+                    }
+                    if pulses / delay > 0 {
+                        self.now = Instant::now();
+                    }
+                }
+                ControlMode::EventCount(_) => {
+                    let elapsed = self.now.elapsed().as_nanos();
+                    let pulses = (elapsed as f64 * self.clockfreq / 1e9) as u8;
+                    self.value = self.value.wrapping_sub(pulses);
+                    if self.value == 0 {
+                        self.value = self.data;
+                    }
+                    if pulses > 0 {
+                        self.now = Instant::now();
+                    }
+                }
+                ControlMode::Stop(_) => {}
+            }
+            OpResult::Byte(self.value)
+        } else {
+            OpResult::Byte(self.ctrl.as_u8())
+        }
     }
-    fn write(&mut self, _address: usize, _result: OpResult) { }
+    fn write(&mut self, address: usize, result: OpResult) { 
+        if address != self.ctrl_address {
+            self.data = result.inner() as u8;
+            self.counter = 0;
+            self.value = self.data;
+        } else {
+            self.ctrl = ControlMode::from(result.inner() as u8, self.offset);
+        }
+    }
 }
 
 pub struct Monitor {
     window: Window,
     buffer: Vec<u32>,
-    counter: usize,
 }
 
 impl Monitor {
@@ -222,34 +154,27 @@ impl Monitor {
             panic!("{}", e);
         });
         let buffer: Vec<u32> = vec![0; 640 * 400];
-        Box::new(Monitor { window, buffer, counter: 0 })
+        Box::new(Monitor { window, buffer })
     }
 }
 
 impl Device for Monitor {
-    // fn init(&mut self, _ram: RamPtr) {
-    // }
-    fn update(&mut self, cpu: &CPU) -> Signal {
-        // self.counter = self.counter.wrapping_add(1);
-        // if self.counter % 3600 != 0 {
-        //     return Signal::Ok
-        // }
-        // for (j, p) in self.buffer.iter_mut().enumerate() {
-        //     if &cpu.ram.borrow()[0xff8000 + j / 8] & (1 << (7 - j % 8)) > 0 {
-        //         *p = 0xffffff;
-        //     } else {
-        //         *p = 0;
-        //     }
-        // }
-        // self.window 
-        //     .update_with_buffer(&self.buffer, 640, 400)
-        //     .unwrap();
+    fn update(&mut self, _cpu: &CPU) -> Signal {
         Signal::Ok
     }
-    fn read(&self, address: usize, size: Size) -> OpResult {
+    fn read(&mut self, _address: usize, _size: Size) -> OpResult {
         OpResult::Byte(0)
     }
-    fn write(&mut self, _address: usize, _result: OpResult) { }
+    fn write(&mut self, address: usize, result: OpResult) {
+        for j in 0..8 {
+            if result.inner() & (1 << (7 - j % 8)) > 0 {
+                self.buffer[8 * (address - 0x38000) + j] = 0xffffff;
+            } else {
+                self.buffer[8 * (address - 0x38000) + j] = 0x0;
+            }
+        }
+        self.window.update_with_buffer(&self.buffer, 640, 400).expect("Error updating screen!");
+    }
 }
 
 
@@ -275,9 +200,44 @@ impl Device for Floppy {
     fn update(&mut self, _cpu: &CPU) -> Signal { 
         Signal::Ok
     }
-    fn read(&self, address: usize, size: Size) -> OpResult {
+    fn read(&mut self, _address: usize, _size: Size) -> OpResult {
         OpResult::Byte(0)
     }
     fn write(&mut self, _address: usize, _result: OpResult) { }
 }
 
+enum ControlMode {
+    Stop(u8),
+    Delay(u8, u8),
+    EventCount(u8),
+    PulseExtension(u8, u8),
+}
+
+impl ControlMode {
+    fn from(ctrl: u8, offset: usize) -> Self {
+        match ctrl >> offset {
+            0 => Self::Stop(ctrl),
+            1 => Self::Delay(4, ctrl),
+            2 => Self::Delay(10, ctrl),
+            3 => Self::Delay(16, ctrl),
+            4 => Self::Delay(50, ctrl),
+            5 => Self::Delay(64, ctrl),
+            6 => Self::Delay(100, ctrl),
+            7 => Self::Delay(200, ctrl),
+            8 => Self::EventCount(ctrl),
+            9 => Self::PulseExtension(4, ctrl),
+            10 => Self::PulseExtension(10, ctrl),
+            11 => Self::PulseExtension(16, ctrl),
+            12 => Self::PulseExtension(50, ctrl),
+            13 => Self::PulseExtension(64, ctrl),
+            14 => Self::PulseExtension(100, ctrl),
+            15 => Self::PulseExtension(200, ctrl),
+            _ => Self::Stop(ctrl),
+        }
+    }
+    fn as_u8(&self) -> u8 {
+        match *self {
+            Self::Stop(ctrl) | Self::Delay(_, ctrl) | Self::EventCount(ctrl) | Self::PulseExtension(_, ctrl) => ctrl,
+        }
+    }
+}
