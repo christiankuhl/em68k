@@ -1,11 +1,15 @@
 use crate::fields::{OpResult, OpResult::*};
+use crate::memory::Bus;
+use crate::devices::*;
+use crate::Configuration;
 
-pub const RAM_SIZE: u32 = 0x400000;
-pub const BASE_ADDRESS: u32 = 0xfc0000;
-pub const START_ADDRESS: u32 = 0xfc0030;
+const RAM_SIZE: u32 = 0x400000;
+const BASE_ADDRESS: u32 = 0xfc0000;
+const START_ADDRESS: u32 = 0xfc0030;
+const INITIAL_SSP: u32 = 0x0104; 
 
 // Initial Memory Layout Atari ST
-pub const MEMORY_LAYOUT: [(usize, OpResult); 14] = [
+const MEMORY_LAYOUT: [(usize, OpResult); 14] = [
     //   $000.L      Reset initial SSP value
     (0x0, Long(0x0104)),
     //   $004.L      Reset initial PC address
@@ -303,4 +307,25 @@ pub const MEMORY_LAYOUT: [(usize, OpResult); 14] = [
 //  $29B4.L*     Max access time *20 ms
 
 //  $5220  *     Directory buffer
+
+pub fn st1040() -> Configuration {
+    let mut bus = Bus::new();
+    bus.attach(Monitor::new(0x38000));
+    bus.attach(Ram::new(0xff8000));
+    // Timer A
+    bus.attach(Timer::new(0xfffffa19, 0, 0xfffffa1f, 2457600.0));
+    // Timer B
+    bus.attach(Timer::new(0xfffffa1b, 0, 0xfffffa21, 50.0));
+    // Timer C 
+    bus.attach(Timer::new(0xfffffa1d, 4, 0xfffffa23, 200.0));
+    // Timer D
+    bus.attach(Timer::new(0xfffffa1d, 0, 0xfffffa25, 2457600.0));
+    Configuration {
+        base_address: BASE_ADDRESS,
+        start_address: START_ADDRESS,
+        initial_ssp: INITIAL_SSP,
+        bus: bus,
+        memory_layout: Vec::from(MEMORY_LAYOUT),
+    }
+}
 

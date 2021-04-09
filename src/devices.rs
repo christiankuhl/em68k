@@ -18,35 +18,6 @@ pub enum Signal {
     NoOp,
 }
 
-pub trait Device: {
-    // fn init(&mut self, bus: BusPtr);
-    fn update(&mut self, cpu: &CPU) -> Signal;
-    fn read(&mut self, address: usize, size: Size) -> OpResult;
-    fn write(&mut self, address: usize, result: OpResult);
-}
-
-
-pub struct ASMStream;
-
-impl Device for ASMStream {
-    // fn init(&mut self, _ram: RamPtr) {}
-    fn update(&mut self, cpu: &CPU) -> Signal {
-        let mut dis = cpu.disassemble(1);
-        for mut instr in dis.drain(..) {
-            let mut hex = String::new();
-            for opcode in instr.1.drain(..) {
-                hex.push_str(&format!(" {:04x}", opcode))
-            }
-            println!("{:08x}:{:<30} {}", instr.0, hex, instr.2);
-        }
-        Signal::Ok
-    }
-    fn read(&mut self, _address: usize, _size: Size) -> OpResult {
-        OpResult::Byte(0)
-    }
-    fn write(&mut self, _address: usize, _result: OpResult) { }
-}
-
 impl PartialEq for Signal {
     fn eq(&self, other: &Signal) -> bool {
         discriminant(&self) == discriminant(&other)
@@ -66,6 +37,58 @@ impl Signal {
     }
 }
 
+
+pub trait Device: {
+    fn memconfig(&self) -> MemoryRange;
+    fn update(&mut self, cpu: &CPU) -> Signal;
+    fn read(&mut self, address: usize, size: Size) -> OpResult;
+    fn write(&mut self, address: usize, result: OpResult);
+}
+
+pub struct Ram {
+    size: usize,
+    mem: Vec<u8>
+}
+
+impl Ram {
+    pub fn new(size: usize) -> Box<Self> {
+        Box::new(Self { mem: vec![0; size], size: size })
+    }
+}
+
+impl Device for Ram {
+    fn memconfig(&self) -> MemoryRange {
+        vec![(0x0, self.size)]
+    }
+    fn update(&mut self, _cpu: &CPU) -> Signal {
+        Signal::Ok
+    }
+    fn read(&mut self, address: usize, size: Size) -> OpResult {
+        match size {
+            Size::Byte => OpResult::Byte(self.mem[address]),
+            Size::Word => OpResult::Word(u16::from_be_bytes([self.mem[address], self.mem[address + 1]])),
+            Size::Long => {
+                OpResult::Long(u32::from_be_bytes([self.mem[address], self.mem[address + 1], self.mem[address + 2], self.mem[address + 3]]))
+            }
+        }
+    }
+    fn write(&mut self, address: usize, result: OpResult) {
+        match result {
+            OpResult::Byte(b) => self.mem[address] = b,
+            OpResult::Word(w) => {
+                self.mem[address + 1] = (w & 0xff) as u8;
+                self.mem[address] = ((w & 0xff00) >> 8) as u8;
+            }
+            OpResult::Long(l) => {
+                self.mem[address + 3] = (l & 0xff) as u8;
+                self.mem[address + 2] = ((l & 0xff00) >> 8) as u8;
+                self.mem[address + 1] = ((l & 0xff0000) >> 16) as u8;
+                self.mem[address] = ((l & 0xff000000) >> 24) as u8;
+            }
+        }
+    }
+}
+
 pub struct Timer {
     data: u8,
     value: u8,
@@ -73,17 +96,19 @@ pub struct Timer {
     now: Instant,
     ctrl: ControlMode,
     ctrl_address: usize,
+    data_address: usize,
     offset: usize,
     clockfreq: f64,
 }
 
 impl Timer {
-    pub fn new(ctrl: usize, offset: usize, clockfreq: f64) -> Box<Self> {
+    pub fn new(ctrl: usize, offset: usize, data: usize, clockfreq: f64) -> Box<Self> {
         Box::new(Self { now: Instant::now(), 
                         value: 0, 
                         data: 0, 
                         counter: 0, 
                         ctrl_address: ctrl, 
+                        data_address: data,
                         ctrl: ControlMode::Stop(0), 
                         offset: offset,
                         clockfreq: clockfreq })
@@ -91,6 +116,9 @@ impl Timer {
 }
 
 impl Device for Timer {
+    fn memconfig(&self) -> MemoryRange {
+        vec![(self.ctrl_address, self.ctrl_address + 1), (self.data_address, self.data_address + 1)]
+    }
     fn update(&mut self, _cpu: &CPU) -> Signal {
         Signal::Ok
     }
@@ -140,10 +168,11 @@ impl Device for Timer {
 pub struct Monitor {
     window: Window,
     buffer: Vec<u32>,
+    vram_start: usize,
 }
 
 impl Monitor {
-    pub fn new() -> Box<Monitor> {
+    pub fn new(vram_start: usize) -> Box<Monitor> {
         let window = Window::new(
             "Test - ESC to exit",
             640,
@@ -154,11 +183,14 @@ impl Monitor {
             panic!("{}", e);
         });
         let buffer: Vec<u32> = vec![0; 640 * 400];
-        Box::new(Monitor { window, buffer })
+        Box::new(Monitor { window, buffer, vram_start })
     }
 }
 
 impl Device for Monitor {
+    fn memconfig(&self) -> MemoryRange {
+        vec![(self.vram_start, self.vram_start + 640 * 400 / 8)]
+    }
     fn update(&mut self, _cpu: &CPU) -> Signal {
         Signal::Ok
     }
@@ -190,6 +222,9 @@ impl Floppy {
 }
 
 impl Device for Floppy {
+    fn memconfig(&self) -> MemoryRange {
+        vec![(0, 0)]
+    }
     // fn init(&mut self, ram: RamPtr) {
     //     let mut raw_mem = ram.as_ref().borrow_mut();
     //     println!("{:08x}", 0xfa0000 + self.content.len());
