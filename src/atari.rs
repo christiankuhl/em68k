@@ -310,16 +310,11 @@ const MEMORY_LAYOUT: [(usize, OpResult); 14] = [
 
 pub fn st1040() -> Configuration {
     let mut bus = Bus::new();
-    bus.attach(Monitor::new(0x38000));
+    bus.attach(Monitor::new(0x3f8000, 0xffff8201));
     bus.attach(Ram::new(0xff8000));
-    // Timer A
-    bus.attach(Timer::new(0xfffffa19, 0, 0xfffffa1f, 2457600.0));
-    // Timer B
-    bus.attach(Timer::new(0xfffffa1b, 0, 0xfffffa21, 50.0));
-    // Timer C 
-    bus.attach(Timer::new(0xfffffa1d, 4, 0xfffffa23, 200.0));
-    // Timer D
-    bus.attach(Timer::new(0xfffffa1d, 0, 0xfffffa25, 2457600.0));
+    bus.attach(MMU::new(0xffff8001));
+    bus.attach(SoundGenerator::new(0xffff8800));
+    
     Configuration {
         base_address: BASE_ADDRESS,
         start_address: START_ADDRESS,
