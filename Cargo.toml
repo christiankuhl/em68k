@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 termion = "1.5"
 minifb = "0.19.3"
+timer = "0.2.0"
+chrono = "0.2.19"

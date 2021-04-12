@@ -45,12 +45,10 @@ impl Emulator {
             if debug {
                 match debugger.update(&mut self.cpu) {
                     Signal::Quit => return,
-                    Signal::Attach(_) => {}
-                    Signal::Detach => {}
                     Signal::NoOp => {
                         idle = true;
                     }
-                    Signal::Ok => (),
+                    _ => (),
                 };
             }
             

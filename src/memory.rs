@@ -1,5 +1,5 @@
 use crate::fields::{OpResult, Size};
-use crate::devices::{DeviceList, Device};
+use crate::devices::{DeviceList, Device, Signal};
 use crate::processor::CPU;
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -96,11 +96,22 @@ impl Bus {
     pub fn write(&mut self, address: usize, result: OpResult) {
         let mut written = false;
         for (range, device) in &mut self.devices {
-            for (fromaddr, toaddr) in range {
+            let mut remap = false;
+            for (fromaddr, toaddr) in range.iter() {
                 if *fromaddr <= address && *toaddr > address {
-                    device.write(address, result);
+                    match device.write(address, result) {
+                        Signal::Remap => {
+                            remap = true;
+                            written = true;
+                            break;
+                        }
+                        _ => ()
+                    }
                     written = true;
                 }
+            }
+            if remap {
+                *range = device.memconfig();
             }
         }
         if !written {

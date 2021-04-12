@@ -29,6 +29,15 @@ impl Size {
             Self::Long => OpResult::Long(res.truncate()),
         }
     }
+    pub fn from_be_bytes(&self, slice: &[u8]) -> OpResult {
+        match self {
+            Size::Byte => OpResult::Byte(slice[0]),
+            Size::Word => OpResult::Word(u16::from_be_bytes([slice[0], slice[1]])),
+            Size::Long => {
+                OpResult::Long(u32::from_be_bytes([slice[0], slice[1], slice[2], slice[3]]))
+            }
+        }
+    }
     pub fn zero(&self) -> OpResult {
         self.from(0u8)
     }
@@ -138,6 +147,15 @@ impl OpResult {
             Self::Word(_) => Size::Word,
             Self::Long(_) => Size::Long,
         }
+    }
+    pub fn to_be_bytes(&self) -> Vec<u8> {
+        let mut result = Vec::new();
+        let value = self.inner();
+        let size = self.size() as usize;
+        for j in 0..size {
+            result.push((value >> (8 * (size - j - 1))) as u8)
+        } 
+        result
     }
 }
 

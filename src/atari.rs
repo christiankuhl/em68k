@@ -314,6 +314,7 @@ pub fn st1040() -> Configuration {
     bus.attach(Ram::new(0xff8000));
     bus.attach(MMU::new(0xffff8001));
     bus.attach(SoundGenerator::new(0xffff8800));
+    bus.attach(MultiFunctionPeripheral::new(0xfffffa01));
     
     Configuration {
         base_address: BASE_ADDRESS,
