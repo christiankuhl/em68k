@@ -1,14 +1,12 @@
-use crate::memory::{Bus, MemoryRange};
+use crate::memory::MemoryRange;
 use crate::fields::{OpResult, Size};
-use crate::processor::{CPU, set_bit};
+use crate::processor::{set_bit, IRQ};
 use std::mem::discriminant;
 use minifb::{Window, WindowOptions};
-use std::time::Instant;
 use std::fs;
 use std::thread;
 use std::time::Duration;
-use std::sync::{mpsc, Arc, atomic::{AtomicU8, Ordering}};
-use std::rc::Rc;
+use std::sync::{mpsc, Arc, atomic::{AtomicU8, Ordering, AtomicBool}};
 
 const CLKFREQ: f64 = 2457600.0;
 
@@ -47,6 +45,7 @@ pub trait Device: {
     fn memconfig(&self) -> MemoryRange;
     fn read(&mut self, address: usize, size: Size) -> OpResult;
     fn write(&mut self, address: usize, result: OpResult) -> Signal;
+    fn interrupt_request(&mut self) -> Option<IRQ>;
 }
 
 pub struct Ram {
@@ -73,11 +72,13 @@ impl Device for Ram {
         }
         Signal::Ok
     }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
 }
 
 pub struct Timer {
     data: Arc<AtomicU8>,
     value: Arc<AtomicU8>,
+    interrupt: Arc<AtomicBool>,
     ctrl: ControlMode,
     ctrl_address: usize,
     data_address: usize,
@@ -90,8 +91,10 @@ impl Timer {
         let (tx, rx) = mpsc::channel();
         let data = Arc::new(AtomicU8::new(0));
         let value = Arc::new(AtomicU8::new(0));
+        let interrupt = Arc::new(AtomicBool::new(false));
         let data_handle = Arc::clone(&data);
         let value_handle = Arc::clone(&value);
+        let interrupt_handle = Arc::clone(&interrupt);
         thread::spawn(move || {
             let mut interval = 1e9 / CLKFREQ;
             let mut stopped = true;
@@ -127,6 +130,7 @@ impl Timer {
                     value_handle.fetch_sub(1, Ordering::Relaxed);
                     if value_handle.load(Ordering::Relaxed) == 0 {
                         value_handle.store(data_handle.load(Ordering::Relaxed), Ordering::Relaxed);
+                        interrupt_handle.store(true, Ordering::Relaxed);
                     }
                 }
             }
@@ -134,6 +138,7 @@ impl Timer {
         Box::new(Self {
             value: value, 
             data: data,  
+            interrupt: interrupt,
             ctrl_address: ctrl_addr, 
             data_address: data_addr,
             ctrl: ControlMode::Stop(0), 
@@ -164,6 +169,7 @@ impl Device for Timer {
         }
         Signal::Ok
     }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
 }
 
 pub struct Monitor {
@@ -178,7 +184,7 @@ pub struct Monitor {
 impl Monitor {
     pub fn new(vram_start: usize, ctrl_address: usize) -> Box<Monitor> {
         let resolution = Resolution::High;
-        let window = Window::new(
+        let mut window = Window::new(
             "Test - ESC to exit",
             resolution.dimensions().0,
             resolution.dimensions().1,
@@ -188,6 +194,7 @@ impl Monitor {
             panic!("{}", e);
         });
         let buffer: Vec<u32> = vec![0; 640 * 400];
+        // window.limit_update_rate(Some(Duration::from_millis(1)));
         Box::new(Monitor { window, buffer, vram_start, ctrl_address, ctrl_register: vec![0; 102], resolution })
     }
 }
@@ -228,7 +235,6 @@ impl Device for Monitor {
             }
             if rel_addr <= 2 {
                 self.vram_start = u32::from_be_bytes([0, self.ctrl_register[0], self.ctrl_register[2], 0]) as usize;
-                println!("Remapped to {:08x}", self.vram_start);
                 return Signal::Remap
             }
             if rel_addr == 0x5f {
@@ -263,6 +269,7 @@ impl Device for Monitor {
         }
         Signal::Ok
     }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
 }
 
 #[derive(Debug)]
@@ -311,6 +318,7 @@ impl Device for Floppy {
     fn write(&mut self, _address: usize, _result: OpResult) -> Signal { 
         Signal::Ok 
     }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
 }
 
 #[derive(Copy, Clone)]
@@ -372,6 +380,7 @@ impl Device for MMU {
         self.data = result;
         Signal::Ok
     }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
 }
 
 pub struct SoundGenerator {
@@ -396,10 +405,12 @@ impl Device for SoundGenerator {
         self.raw_data = result;
         Signal::Ok
     }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
 }
 
 pub struct MultiFunctionPeripheral {
     address: usize,
+    active_edge: u32,
     timer_a: Box<Timer>,
     timer_b: Box<Timer>,
     timer_c: Box<Timer>,
@@ -409,15 +420,15 @@ pub struct MultiFunctionPeripheral {
 
 impl MultiFunctionPeripheral {
     pub fn new(address: usize) -> Box<Self> {
-        let interrupt_handler = InterruptHandler::new(0x6);
-        let mut result = Self { address, 
-                            interrupt_handler,
-                            timer_a: Timer::new(0x18, 0, 0x1e, 2457600.0),
-                            timer_b: Timer::new(0x1a, 0, 0x20, 50.0),
-                            timer_c: Timer::new(0x1c, 4, 0x22, 200.0),
-                            timer_d: Timer::new(0x1c, 0, 0x24, 2457600.0),
-                        };
-        result.init();
+        let result = Self { 
+                        address: address, 
+                        active_edge: 0,
+                        interrupt_handler: InterruptHandler::new(0x6),
+                        timer_a: Timer::new(0x18, 0, 0x1e, 2457600.0),
+                        timer_b: Timer::new(0x1a, 0, 0x20, 50.0),
+                        timer_c: Timer::new(0x1c, 4, 0x22, 200.0),
+                        timer_d: Timer::new(0x1c, 0, 0x24, 2457600.0),
+                    };
         Box::new(result)
     }
 }
@@ -427,11 +438,88 @@ impl Device for MultiFunctionPeripheral {
         vec![(self.address, self.address + 64)]
     }
     fn read(&mut self, address: usize, size: Size) -> OpResult {
-        self.bus.read(address - self.address, size)
+        let rel_addr = address - self.address;
+        if rel_addr == 2 {
+            return size.from(self.active_edge)
+        }
+        for (fromaddr, toaddr) in self.timer_a.memconfig() {
+            if rel_addr >= fromaddr && rel_addr < toaddr {
+                return self.timer_a.read(rel_addr, size)
+            }
+        }
+        for (fromaddr, toaddr) in self.timer_b.memconfig() {
+            if rel_addr >= fromaddr && rel_addr < toaddr {
+                return self.timer_b.read(rel_addr, size)
+            }
+        }
+        for (fromaddr, toaddr) in self.timer_c.memconfig() {
+            if rel_addr >= fromaddr && rel_addr < toaddr {
+                return self.timer_c.read(rel_addr, size)
+            }
+        }
+        for (fromaddr, toaddr) in self.timer_d.memconfig() {
+            if rel_addr >= fromaddr && rel_addr < toaddr {
+                return self.timer_d.read(rel_addr, size)
+            }
+        }
+        for (fromaddr, toaddr) in self.interrupt_handler.memconfig() {
+            if rel_addr >= fromaddr && rel_addr < toaddr {
+                return self.interrupt_handler.read(rel_addr, size)
+            }
+        }
+        panic!("Unmapped address {:x}!", rel_addr)
     }
     fn write(&mut self, address: usize, result: OpResult) -> Signal {
-        self.bus.write(address - self.address, result);
+        let rel_addr = address - self.address;
+        if rel_addr == 2 {
+            self.active_edge = result.inner();
+            println!("{:08b}", self.active_edge);
+        }
+        for (fromaddr, toaddr) in self.timer_a.memconfig() {
+            if rel_addr >= fromaddr && rel_addr < toaddr {
+                self.timer_a.write(rel_addr, result);
+            }
+        }
+        for (fromaddr, toaddr) in self.timer_b.memconfig() {
+            if rel_addr >= fromaddr && rel_addr < toaddr {
+                self.timer_b.write(rel_addr, result);
+            }
+        }
+        for (fromaddr, toaddr) in self.timer_c.memconfig() {
+            if rel_addr >= fromaddr && rel_addr < toaddr {
+                self.timer_c.write(rel_addr, result);
+            }
+        }
+        for (fromaddr, toaddr) in self.timer_d.memconfig() {
+            if rel_addr >= fromaddr && rel_addr < toaddr {
+                self.timer_d.write(rel_addr, result);
+            }
+        }
+        for (fromaddr, toaddr) in self.interrupt_handler.memconfig() {
+            if rel_addr >= fromaddr && rel_addr < toaddr {
+                self.interrupt_handler.write(rel_addr, result);
+            }
+        }
         Signal::Ok
+    }
+    fn interrupt_request(&mut self) -> Option<IRQ> { 
+        if self.timer_a.interrupt.load(Ordering::Relaxed) {
+            self.timer_a.interrupt.store(false, Ordering::Relaxed);
+            return Some(IRQ { level: 6 })
+        }
+        if self.timer_b.interrupt.load(Ordering::Relaxed) {
+            self.timer_b.interrupt.store(false, Ordering::Relaxed);
+            return Some(IRQ { level: 6 })
+        }
+        if self.timer_c.interrupt.load(Ordering::Relaxed) {
+            self.timer_c.interrupt.store(false, Ordering::Relaxed);
+            return Some(IRQ { level: 6 })
+        }
+        if self.timer_d.interrupt.load(Ordering::Relaxed) {
+            self.timer_d.interrupt.store(false, Ordering::Relaxed);
+            return Some(IRQ { level: 6 })
+        }
+        None
     }
 }
 
@@ -455,7 +543,165 @@ impl Device for InterruptHandler {
     fn write(&mut self, address: usize, result: OpResult) -> Signal {
         Signal::Ok
     }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
 }
+
+pub struct MIDIAdapter {
+    address: usize
+}
+
+impl MIDIAdapter {
+    pub fn new(address: usize) -> Box<Self> {
+        Box::new(Self { address })
+    }
+}
+
+impl Device for MIDIAdapter {
+    fn memconfig(&self) -> MemoryRange {
+        vec![(self.address, self.address + 4)]
+    }
+    fn read(&mut self, address: usize, size: Size) -> OpResult {
+        OpResult::Byte(0)
+    }
+    fn write(&mut self, address: usize, result: OpResult) -> Signal {
+        Signal::Ok
+    }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }    
+}
+
+pub struct Microwire {
+    address: usize,
+    data: Vec<u8>,
+}
+
+impl Microwire {
+    pub fn new(address: usize) -> Box<Self> {
+        Box::new(Self { address, data: vec![0; 4] })
+    }
+}
+
+impl Device for Microwire {
+    fn memconfig(&self) -> MemoryRange {
+        vec![(self.address, self.address + 4)]
+    }
+    fn read(&mut self, address: usize, size: Size) -> OpResult {
+        // size.from_be_bytes(&self.data[address - self.address..])
+        size.zero()
+    }
+    fn write(&mut self, address: usize, result: OpResult) -> Signal {
+        for (j, &b) in result.to_be_bytes().iter().enumerate() {
+            self.data[address - self.address + j] = b;
+        }
+        Signal::Ok
+    }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }    
+}
+
+pub struct DMASoundSystem {
+    address: usize,
+    data: Vec<u8>,
+}
+
+impl DMASoundSystem {
+    pub fn new(address: usize) -> Box<Self> {
+        Box::new(Self { address, data: vec![0; 0x1a] })
+    }
+}
+
+impl Device for DMASoundSystem {
+    fn memconfig(&self) -> MemoryRange {
+        vec![(self.address, self.address + 0x1a)]
+    }
+    fn read(&mut self, address: usize, size: Size) -> OpResult {
+        size.from_be_bytes(&self.data[address - self.address..])
+    }
+    fn write(&mut self, address: usize, result: OpResult) -> Signal {
+        for (j, &b) in result.to_be_bytes().iter().enumerate() {
+            self.data[address - self.address + j] = b;
+        }
+        Signal::Ok
+    }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }    
+}
+
+pub struct SystemControlUnit {
+    address: usize,
+    data: Vec<u8>,
+}
+
+impl SystemControlUnit {
+    pub fn new(address: usize) -> Box<Self> {
+        Box::new(Self { address, data: vec![0; 0x20] })
+    }
+}
+
+impl Device for SystemControlUnit {
+    fn memconfig(&self) -> MemoryRange {
+        vec![(self.address, self.address + 0x20)]
+    }
+    fn read(&mut self, address: usize, size: Size) -> OpResult {
+        size.from_be_bytes(&self.data[address - self.address..])
+    }
+    fn write(&mut self, address: usize, result: OpResult) -> Signal {
+        for (j, &b) in result.to_be_bytes().iter().enumerate() {
+            self.data[address - self.address + j] = b;
+        }
+        Signal::Ok
+    }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }    
+}
+
+pub struct JoystickPort {
+    address: usize,
+    data: Vec<u8>,
+}
+
+impl JoystickPort {
+    pub fn new(address: usize) -> Box<Self> {
+        Box::new(Self { address, data: vec![0; 0x600] })
+    }
+}
+
+impl Device for JoystickPort {
+    fn memconfig(&self) -> MemoryRange {
+        vec![(self.address, self.address + 0x600)]
+    }
+    fn read(&mut self, address: usize, size: Size) -> OpResult {
+        size.from_be_bytes(&self.data[address - self.address..])
+    }
+    fn write(&mut self, address: usize, result: OpResult) -> Signal {
+        for (j, &b) in result.to_be_bytes().iter().enumerate() {
+            self.data[address - self.address + j] = b;
+        }
+        Signal::Ok
+    }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }    
+}
+
+
+pub struct Keyboard {
+    address: usize
+}
+
+impl Keyboard {
+    pub fn new(address: usize) -> Box<Self> {
+        Box::new(Self { address })
+    }
+}
+
+impl Device for Keyboard {
+    fn memconfig(&self) -> MemoryRange {
+        vec![(self.address, self.address + 4)]
+    }
+    fn read(&mut self, address: usize, size: Size) -> OpResult {
+        OpResult::Byte(0)
+    }
+    fn write(&mut self, address: usize, result: OpResult) -> Signal {
+        Signal::Ok
+    }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }    
+}
+
 
 // $FFFFFA01  r/w  |x.xx...x|          MFP GP I/O
 //                  | ||   |__________ Parallel port status

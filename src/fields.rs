@@ -305,8 +305,8 @@ impl EAMode {
                 let da_flag = if da == 0 { "d" } else { "a" };
                 format!("({:x}a{:},{:}{:}.{:}*{:})", SignedForDisplay(displacement), earegister, da_flag, iregister, size.as_asm(), 1 << scale)
             }
-            Self::AbsoluteShort(ptr) => format!("({:04x}).w", ptr),
-            Self::AbsoluteLong(ptr) => format!("({:08x}).w", ptr),
+            Self::AbsoluteShort(ptr) => format!("({:04x}).w", ptr as u16),
+            Self::AbsoluteLong(ptr) => format!("({:08x}).l", ptr as u32),
             Self::PCDisplacement(displ, pc) => format!("({:04x},pc)[{:08x}]", SignedForDisplay(displ), pc as i32 + displ),
             Self::Immediate(data) => format!("#{:}", data),
             Self::PCIndex8Bit(register, displacement, size, scale, da, _) => {

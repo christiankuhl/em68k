@@ -18,16 +18,23 @@ use termion::{clear, color, cursor};
 
 #[derive(Clone)]
 pub struct CPU {
-    pub pc: u32,          // Program counter
-    pub sr: u32,          // Status register
-    pub dr: [RegPtr; 8],  // Data registers
-    pub ar: [RegPtr; 8],  // Address registers
-    pub ssp: RegPtr,      // Supervisory stack pointer
-    pub bus: BusPtr,      // Address Bus
-    pub nxt: Instruction, // Next instruction (debugger)
-    pub prev: u32,        // Last program counter (debugger)
-    pub jmp: u32,         // Last jump location (debugger)
+    pub pc: u32,                // Program counter
+    pub sr: u32,                // Status register
+    pub dr: [RegPtr; 8],        // Data registers
+    pub ar: [RegPtr; 8],        // Address registers
+    pub ssp: RegPtr,            // Supervisory stack pointer
+    pub bus: BusPtr,            // Address Bus
+    pub nxt: Instruction,       // Next instruction (debugger)
+    pub prev: u32,              // Last program counter (debugger)
+    pub jmp: u32,               // Last jump location (debugger)
+    pub irq: VecDeque<IRQ>,     // Interrupt request queue
 }
+
+#[derive(Copy, Clone)]
+pub struct IRQ {
+    pub level: u32
+}
+
 
 #[derive(Debug)]
 pub struct CCRFlags {
@@ -74,7 +81,7 @@ impl CCRFlags {
 
 impl CPU {
     pub fn new(pc: u32, sr: u32, dr: [RegPtr; 8], ar: [RegPtr; 8], ssp: RegPtr, bus: BusPtr) -> Self {
-        CPU { pc, sr, dr, ar, ssp, bus, nxt: Instruction::NOP, prev: 0, jmp: 0 }
+        CPU { pc, sr, dr, ar, ssp, bus, nxt: Instruction::NOP, prev: 0, jmp: 0, irq: VecDeque::new() }
     }
     pub fn clock_cycle(&mut self) -> Signal {
         let next_instruction = self.nxt;
@@ -215,7 +222,7 @@ impl CPU {
         for j in 0..length {
             opcodes.push(self.lookahead(j as isize - length as isize));
         }
-        disassembly.push_back((cpu.jmp, opcodes, cpu.nxt.as_asm(self)));
+        disassembly.push_back((cpu.jmp, opcodes, cpu.nxt.as_asm(&cpu)));
         for _ in 0..lines - 1 {
             let pc = cpu.pc;
             let mut opcodes = Vec::new();
@@ -226,35 +233,49 @@ impl CPU {
                 opcodes.push(cpu.lookahead(j as isize - length as isize));
             }
             let instr_txt = match instr {
-                Some(instruction) => instruction.as_asm(self),
+                Some(instruction) => instruction.as_asm(&cpu),
                 None => String::from("dc"),
             };
             disassembly.push_back((pc, opcodes, instr_txt));
         }
         disassembly
     }
+    pub fn interrupt_mask(&self) -> u32 {
+        (self.sr & 0x700) >> 8
+    }
+    pub fn serve_interrupt_requests(&mut self) {
+        self.irq.extend(self.bus.borrow_mut().interrupt_requests());
+        if let Some(irq) = self.irq.pop_front() {
+            if irq.level == 7 || irq.level > self.interrupt_mask() {
+                println!("Interrupt (level {}) occured!", irq.level);
+                let trap = Instruction::TRAP { vector: 24 + irq.level as usize };
+                trap.execute(self);
+            }
+        }
+    }
 }
 
 impl fmt::Display for CPU {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = String::from("\n");
-        s.push_str(&format!("{r}╔═════════════════════════════════╦", r = cursor::Goto(1, 2)));
-        s.push_str(&format!("{r}║ CPU state                       ║", r = cursor::Goto(1, 3)));
-        s.push_str(&format!("{r}╟────┬───────────┬────┬───────────╫", r = cursor::Goto(1, 4)));
+        s.push_str(&format!("{r}╔══════════════════════════════════╦", r = cursor::Goto(1, 2)));
+        s.push_str(&format!("{r}║ CPU state                        ║", r = cursor::Goto(1, 3)));
+        s.push_str(&format!("{r}╟─────┬───────────┬────┬───────────╫", r = cursor::Goto(1, 4)));
         for j in 0..8 {
             s.push_str(&format!(
-                "{r}║ A{j} │  {a:08x} │ D{j} │  {d:08x} ║\n",
+                "{r}║ A{j}  │  {a:08x} │ D{j} │  {d:08x} ║\n",
                 j = j,
                 a = *self.ar[j].borrow(),
                 d = *self.dr[j].borrow(),
                 r = cursor::Goto(1, (j + 5) as u16),
             ));
         }
-        s.push_str(&format!("{r}╟────┼─┬─┬─┬─┬─┬─┼────┼───────────╢", r = cursor::Goto(1, 13)));
-        s.push_str(&format!("{r}║    │S│X│N│Z│V│C│    │           ║", r = cursor::Goto(1, 14)));
-        s.push_str(&format!("{r}╟────┼─┼─┼─┼─┼─┼─┼────┼───────────╢", r = cursor::Goto(1, 15)));
+        s.push_str(&format!("{r}╟─────┼─┬─┬─┬─┬─┬─┼────┼───────────╢", r = cursor::Goto(1, 13)));
+        s.push_str(&format!("{r}║ IRQ │S│X│N│Z│V│C│    │           ║", r = cursor::Goto(1, 14)));
+        s.push_str(&format!("{r}╟─────┼─┼─┼─┼─┼─┼─┼────┼───────────╢", r = cursor::Goto(1, 15)));
         s.push_str(&format!(
-            "{r}║ SR │{}│{}│{}│{}│{}│{}│ PC │  {:08x} ║\n",
+            "{r}║ {:03b} │{}│{}│{}│{}│{}│{}│ PC │  {:08x} ║\n",
+            self.interrupt_mask(),
             self.ccr(CCR::S) as u8,
             self.ccr(CCR::X) as u8,
             self.ccr(CCR::N) as u8,
@@ -264,7 +285,7 @@ impl fmt::Display for CPU {
             self.pc,
             r = cursor::Goto(1, 16)
         ));
-        s.push_str(&format!("{r}╚════╧═╧═╧═╧═╧═╧═╧════╧═══════════╩", r = cursor::Goto(1, 17)));
+        s.push_str(&format!("{r}╚═════╧═╧═╧═╧═╧═╧═╧════╧═══════════╩", r = cursor::Goto(1, 17)));
         write!(f, "{}", s)
     }
 }
@@ -308,7 +329,7 @@ impl Disassembly {
                 match disassembled.get(&cpu.jmp) {
                     Some(cursor) => {
                         jumped = true;
-                        self.cursor = *cursor + 1;
+                        self.cursor = *cursor;
                     }
                     None => self.cursor = 0,
                 }
@@ -334,15 +355,15 @@ impl fmt::Display for Disassembly {
         let mut result = String::new();
         result.push_str(&format!(
             "{r}═══════════════════════════════════════════════════════════════════════╗\n",
-            r = cursor::Goto(36, 2)
+            r = cursor::Goto(37, 2)
         ));
         result.push_str(&format!(
             "{r} Next instructions                                                     ║\n",
-            r = cursor::Goto(36, 3)
+            r = cursor::Goto(37, 3)
         ));
         result.push_str(&format!(
             "{r}──────────┬──────────────────────────┬─────────────────────────────────╢\n",
-            r = cursor::Goto(36, 4)
+            r = cursor::Goto(37, 4)
         ));
         for (j, line) in self.disassembly.iter().enumerate() {
             let mut out = String::new();
@@ -370,13 +391,13 @@ impl fmt::Display for Disassembly {
                 o = out,
                 i = line.2,
                 a = line.0,
-                r = cursor::Goto(36, (j + 5) as u16),
+                r = cursor::Goto(37, (j + 5) as u16),
                 sym = symbol,
             ));
         }
         result.push_str(&format!(
             "{r}══════════╧══════════════════════════╧═════════════════════════════════╝\n",
-            r = cursor::Goto(36, (self.length + 5) as u16)
+            r = cursor::Goto(37, (self.length + 5) as u16)
         ));
         write!(f, "{}", result)
     }
@@ -461,7 +482,7 @@ impl Debugger {
         println!("{}", clear::All);
         print!("{c}{tl}{cpu}", c = clear::All, tl = cursor::Goto(1, 1), cpu = cpu);
         print!("{tr}{dis}", tr = cursor::Goto(10, 10), dis = self.disassembly);
-        print!("{r} Next instruction: {n}", r = cursor::Goto(36, 3), n = cpu.nxt.as_asm(cpu));
+        print!("{r} Next instruction: {n}", r = cursor::Goto(37, 3), n = cpu.nxt.as_asm(cpu));
         if !self.variables.is_empty() {
             println!("{r}Watched memory locations", r = cursor::Goto(1, 6 + self.disassembly.length as u16));
             for var in self.variables.iter() {

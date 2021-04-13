@@ -6,7 +6,7 @@ mod memory;
 mod parser;
 mod processor;
 use memory::{Bus};
-use processor::{CPU, Debugger, DisassemblySection};
+use processor::{CPU, Debugger};
 mod conversions;
 mod devices;
 use devices::Signal;
@@ -39,6 +39,7 @@ impl Emulator {
                     Signal::Quit => break,
                     _ => {}
                 }
+                self.cpu.serve_interrupt_requests();
             } else {
                 idle = false;
             }
@@ -51,7 +52,6 @@ impl Emulator {
                     _ => (),
                 };
             }
-            
         }
     }
     fn load(&mut self, progname: &str) {
@@ -92,13 +92,6 @@ impl Emulator {
             handle.write(val);
         }
         Emulator { cpu: cpu, base_address: config.base_address as usize }
-    }
-    fn disassemble(&mut self, progname: &str) -> DisassemblySection {
-        let program = fs::read(progname).expect("Program does not exist!");
-        self.load(progname);
-        self.cpu.clock_cycle();
-        println!("{}", program.len() / 2);
-        self.cpu.disassemble(800)
     }
 }
 

@@ -31,7 +31,8 @@ pub enum Instruction {
     BTSTS { mode: EAMode, extword: u16 },
     JMP { mode: EAMode },
     JSR { mode: EAMode },
-    MOVECCR { mode: EAMode },
+    MOVEFROMCCR { mode: EAMode },
+    MOVETOCCR { mode: EAMode },
     MOVEFROMSR { mode: EAMode },
     MOVETOSR { mode: EAMode },
     PEA { mode: EAMode },
@@ -157,7 +158,7 @@ impl Instruction {
                 if !cpu.in_supervisor_mode() {
                     privilege_violation(cpu);
                 } else {
-                    let mut ssp = cpu.ar[7].as_ref().borrow_mut();
+                    let mut ssp = cpu.ssp.as_ref().borrow_mut();
                     let mut ram_handle = MemoryHandle::new(None, Some(*ssp as usize), None, cpu);
                     cpu.sr = ram_handle.read(Word).inner();
                     *ssp += 2;
@@ -226,7 +227,7 @@ impl Instruction {
             }
             Self::TRAP { vector } => {
                 cpu.supervisor_mode(true);
-                let mut ssp = cpu.ar[7].as_ref().borrow_mut();
+                let mut ssp = cpu.ssp.as_ref().borrow_mut();
                 *ssp -= 4;
                 let mut ram_handle = MemoryHandle::new(None, Some(*ssp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(cpu.pc));
@@ -275,7 +276,11 @@ impl Instruction {
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(pc));
             }
-            Self::MOVECCR { mode } => {
+            Self::MOVEFROMCCR { mode } => {
+                let dest = cpu.memory_handle(mode);
+                dest.write(OpResult::Word((cpu.sr & 0xff) as u16));
+            }
+            Self::MOVETOCCR { mode } => {
                 let src = cpu.memory_handle(mode).read(Word).inner();
                 cpu.sr &= 0xff00;
                 cpu.sr |= src;
@@ -542,8 +547,6 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::BRA { displacement } => {
-                // println!("{:08x}", *cpu.dr[4].borrow());
-                // panic!("Foo!");
                 cpu.pc = (cpu.pc as i32 + displacement) as u32;
             }
             Self::BSR { displacement } => {
@@ -997,7 +1000,8 @@ impl Instruction {
             Self::BTSTS { mode, extword } => format!("btst #{},{}", extword, mode),
             Self::JMP { mode } => format!("jmp {}", mode),
             Self::JSR { mode } => format!("jsr {}", mode),
-            Self::MOVECCR { mode } => format!("move {},ccr", mode),
+            Self::MOVEFROMCCR { mode } => format!("move ccr,{}", mode),
+            Self::MOVETOCCR { mode } => format!("move {},ccr", mode),
             Self::MOVEFROMSR { mode } => format!("move sr,{}", mode),
             Self::MOVETOSR { mode } => format!("move {},sr", mode),
             Self::PEA { mode } => format!("pea {}", mode),
@@ -1172,7 +1176,7 @@ impl Instruction {
 
 fn privilege_violation(cpu: &mut CPU) {
     cpu.supervisor_mode(true);
-    let mut ssp = cpu.ar[7].as_ref().borrow_mut();
+    let mut ssp = cpu.ssp.as_ref().borrow_mut();
     *ssp -= 4;
     let mut ram_handle = MemoryHandle::new(None, Some(*ssp as usize), None, cpu);
     ram_handle.write(OpResult::Long(cpu.pc));

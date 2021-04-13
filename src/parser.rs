@@ -60,7 +60,8 @@ const _BSETS: usize = 0x23;
 const _BTSTS: usize = 0x20;
 const _JMP: usize = 0x13b;
 const _JSR: usize = 0x13a;
-const _MOVECCR: usize = 0x113;
+const _MOVEFROMCCR: usize = 0x10b;
+const _MOVETOCCR: usize = 0x113;
 const _MOVEFROMSR: usize = 0x103;
 const _MOVETOSR: usize = 0x11b;
 const _NBCD: usize = 0x120;
@@ -262,7 +263,8 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         }
         [_JMP, mode, earegister] if mode < &7 || earegister < &5 => return Some(JMP { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
         [_JSR, mode, earegister] if mode < &7 || earegister < &5 => return Some(JSR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
-        [_MOVECCR, mode, earegister] if mode < &7 || earegister < &5 => return Some(MOVECCR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
+        [_MOVEFROMCCR, mode, earegister] if mode < &7 || earegister < &5 => return Some(MOVEFROMCCR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
+        [_MOVETOCCR, mode, earegister] if mode < &7 || earegister < &5 => return Some(MOVETOCCR { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
         [_MOVEFROMSR, mode, earegister] if mode < &7 || earegister < &5 => return Some(MOVEFROMSR { mode: EAMode::from(Size::Word, *mode, *earegister, cpu) }),
         [_MOVETOSR, mode, earegister] if mode < &7 || earegister < &5 => return Some(MOVETOSR { mode: EAMode::from(Size::Word, *mode, *earegister, cpu) }),
         [_PEA, mode, earegister] if mode < &7 || earegister < &5 => return Some(PEA { mode: EAMode::from(Size::Byte, *mode, *earegister, cpu) }),
@@ -453,7 +455,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         [0x8, register, _DIVU, mode, earegister] if mode < &7 || earegister < &5 => {
             return Some(DIVU { register: *register, mode: EAMode::from(Size::Word, *mode, *earegister, cpu) })
         }
-        [0x4, register, _LEA, mode, earegister] if mode < &7 || earegister < &5 => {
+        [0x4, register, _LEA, mode, earegister] if (mode < &7 || earegister < &5) && mode > &2 && mode != &3 && mode != &4 => {
             return Some(LEA { register: *register, mode: EAMode::from(Size::Long, *mode, *earegister, cpu) })
         }
         [0xc, register, _MULS, mode, earegister] if mode < &7 || earegister < &5 => {
@@ -612,8 +614,11 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         }
         _ => {}
     }
-    // None
-    Some(ILLEGAL)
+    match split_instruction(opcode, vec![4, 12]).as_slice() {
+        [0xa, _] => return Some(ILLEGAL),
+        _ => {}
+    }
+    None    
 }
 
 fn opt_displacement(displ: usize, cpu: &mut CPU) -> i32 {

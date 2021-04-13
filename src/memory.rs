@@ -1,7 +1,8 @@
 use crate::fields::{OpResult, Size};
 use crate::devices::{DeviceList, Device, Signal};
-use crate::processor::CPU;
+use crate::processor::{CPU, IRQ};
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::rc::Rc;
 
 pub type BusPtr = Rc<RefCell<Bus>>;
@@ -84,10 +85,11 @@ impl Bus {
         self.devices.push((device.memconfig(), device));
     }
     pub fn read(&mut self, address: usize, size: Size) -> OpResult {
+        let trunc_address = address & 0xffffffff;
         for (range, device) in &mut self.devices {
             for (fromaddr, toaddr) in range {
-                if *fromaddr <= address && *toaddr > address {
-                    return device.read(address, size)
+                if *fromaddr <= trunc_address && *toaddr > trunc_address {
+                    return device.read(trunc_address, size)
                 }
             }
         } 
@@ -95,11 +97,12 @@ impl Bus {
     }
     pub fn write(&mut self, address: usize, result: OpResult) {
         let mut written = false;
+        let trunc_address = address & 0xffffffff;
         for (range, device) in &mut self.devices {
             let mut remap = false;
             for (fromaddr, toaddr) in range.iter() {
-                if *fromaddr <= address && *toaddr > address {
-                    match device.write(address, result) {
+                if *fromaddr <= trunc_address && *toaddr > trunc_address {
+                    match device.write(trunc_address, result) {
                         Signal::Remap => {
                             remap = true;
                             written = true;
@@ -117,5 +120,14 @@ impl Bus {
         if !written {
             panic!(format!("Address {:08x} is not assigned!", address))
         }
+    }
+    pub fn interrupt_requests(&mut self) -> VecDeque<IRQ> {
+        let mut irqs = VecDeque::new();
+        for (_, device) in &mut self.devices {
+            if let Some(irq) = device.interrupt_request() {
+                irqs.push_back(irq);
+            }
+        }
+        irqs
     }
 }

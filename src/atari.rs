@@ -28,7 +28,7 @@ const MEMORY_LAYOUT: [(usize, OpResult); 14] = [
     //   $424.B      Memcntlr (Memory controller low nibble)
     (0x424, Byte(0x0)),
     //   $426.L      Resvalid (#$31415926 to jump through 'resvector')
-    (0x426, Long(0x31415962)),
+    (0x426, Long(0x0)),
     //   $42A.L      Resvector (System reset bailout vector)
     (0x42a, Long(START_ADDRESS)),
     //   $42E.L      Phystop (Physical RAM top)
@@ -315,7 +315,13 @@ pub fn st1040() -> Configuration {
     bus.attach(MMU::new(0xffff8001));
     bus.attach(SoundGenerator::new(0xffff8800));
     bus.attach(MultiFunctionPeripheral::new(0xfffffa01));
-    
+    bus.attach(Keyboard::new(0xfffffc00));
+    bus.attach(MIDIAdapter::new(0xfffffc04));
+    bus.attach(Microwire::new(0xffff8922));
+    bus.attach(DMASoundSystem::new(0xffff8900));
+    bus.attach(SystemControlUnit::new(0xffff8e00));
+    bus.attach(JoystickPort::new(0xffff9200));
+
     Configuration {
         base_address: BASE_ADDRESS,
         start_address: START_ADDRESS,
