@@ -48,6 +48,8 @@
 ;
 
 
+TESTSTATUS: equ $ffffff00
+
 ; Populate Exception Vectors
 ;
     org $00000   
@@ -78,7 +80,7 @@
 ; Loop here when all tests pass
 ;
     org $00F000 
-ALL_DONE: bra ALL_DONE
+ALL_DONE: stop
 
  
 ; Exception Vector = 6   CHK Instruction
@@ -136,9 +138,9 @@ EXCEPTION_7:
    jsr op_NEGS
    jsr op_CLR
    jsr op_MOVEM
-   ;jsr op_ABCD
-   ;jsr op_SBCD
-   ;jsr op_NBCD
+   jsr op_ABCD
+   jsr op_SBCD
+   jsr op_NBCD
    jsr op_TRAPV
    jsr op_RTR
    jsr op_BSR
@@ -199,11 +201,15 @@ op_ORI_TO_CCR:
    
     move #$2700,SR         ; Put flags back to initial value
 
+    movea TESTSTATUS,a0
+    moveq 1,$00(a0)
     rts
     
-ORI_TO_CCR_FAIL: bra ORI_TO_CCR_FAIL
+ORI_TO_CCR_FAIL: 
+    movea TESTSTATUS,a0
+    moveq 2,$00(a0)
+    rts
    
-
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
 ; OPCODE : ORI_TO_SR
@@ -226,10 +232,14 @@ op_ORI_TO_SR:
    
     move #$2700,SR        ; Put flags back to initial value
 
+    movea TESTSTATUS,a0
+    moveq 1,$01(a0)
     rts
     
-ORI_TO_SR_FAIL: bra ORI_TO_SR_FAIL
-   
+ORI_TO_SR_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$01(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -254,10 +264,14 @@ op_EORI_TO_CCR:
    
     move #$2700,SR         ; Put flags back to initial value
 
+    movea TESTSTATUS,a0
+    moveq 1,$02(a0)
     rts
     
-EORI_TO_CCR_FAIL: bra EORI_TO_CCR_FAIL
-   
+EORI_TO_CCR_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$02(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -282,11 +296,14 @@ op_EORI_TO_SR:
    
     move #$2700,SR        ; Put flags back to initial value
 
+    movea TESTSTATUS,a0
+    moveq 1,$03(a0)
     rts
     
-EORI_TO_SR_FAIL: bra EORI_TO_SR_FAIL
-   
-
+EORI_TO_SR_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$03(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -311,10 +328,14 @@ op_ANDI_TO_CCR:
    
     move #$2700,SR         ; Put flags back to initial value
 
+    movea TESTSTATUS,a0
+    moveq 1,$04(a0)
     rts
     
-ANDI_TO_CCR_FAIL: bra ANDI_TO_CCR_FAIL
-   
+ANDI_TO_CCR_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$04(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -338,10 +359,14 @@ op_ANDI_TO_SR:
    
     move #$2700,SR         ; Put flags back to initial value
 
+    movea TESTSTATUS,a0
+    moveq 1,$05(a0)
     rts
     
-ANDI_TO_SR_FAIL: bra ANDI_TO_SR_FAIL
-  
+ANDI_TO_SR_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$05(a0)
+    rts
   
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -717,12 +742,14 @@ op_BTST32:  bne BTST_FAIL               ; branch if Z clear
             btst.b d7,#$88
             beq BTST_FAIL               ; branch if Z set
             
-
+    movea TESTSTATUS,a0
+    moveq 1,$06(a0)
     rts
     
-BTST_FAIL: bra BTST_FAIL
-   
- 
+BTST_FAIL: 
+   movea TESTSTATUS,a0
+   moveq 2,$06(a0)
+   rts
  
   
 ;-----------------------------------------------------------
@@ -1056,11 +1083,14 @@ op_BCHG:
             bne BCHG_FAIL               ; branch if Z clear  
                     
 
+    movea TESTSTATUS,a0
+    moveq 1,$07(a0)
     rts
     
-BCHG_FAIL: bra BCHG_FAIL
-
-
+BCHG_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$07(a0)
+    rts
 
   
 ;-----------------------------------------------------------
@@ -1382,13 +1412,14 @@ op_BCLR:
             bne BCLR_FAIL;               ; branch if Z clear  
                     
 
-
+    movea TESTSTATUS,a0
+    moveq 1,$08(a0)
     rts
     
-BCLR_FAIL: bra BCLR_FAIL;
-
-
-
+BCLR_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$08(a0)
+    rts
 
   
 ;-----------------------------------------------------------
@@ -1727,11 +1758,14 @@ op_BSET:
             cmpi.b #$83,(a0)
             bne BSET_FAIL               ; branch if Z clear  
                     
-
+    movea TESTSTATUS,a0
+    moveq 1,$09(a0)
     rts
     
-BSET_FAIL: bra BSET_FAIL
-
+BSET_FAIL:
+    movea TESTSTATUS,a0
+    moveq 1,$09(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -1782,9 +1816,14 @@ op_MOVEP:
             cmpi.l #$AABBCCDD,d3
             bne MOVEP_FAIL;
     
+            movea TESTSTATUS,a0
+            moveq 1,$0a(a0)
             rts
 
-MOVEP_FAIL: bra MOVEP_FAIL
+MOVEP_FAIL: 
+    movea TESTSTATUS,a0
+    moveq 2,$0a(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -1954,9 +1993,14 @@ op_BOOL_I:
             cmpi.l #$a5a5a55a,(a0)+
             bne BOOL_I_FAIL;                       ; Verify if Z flag is set
             
+            movea TESTSTATUS,a0
+            moveq 1,$0b(a0)
             rts
 
-BOOL_I_FAIL: bra BOOL_I_FAIL
+BOOL_I_FAIL: 
+    movea TESTSTATUS,a0
+    moveq 2,$0b(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -1983,14 +2027,19 @@ op_BSR:         bsr.s BSR_CLOSE1        ; Negative 8-bit displacement
                 bne BSR_FAIL;
                 cmpi.l #$44444444,d4
                 bne BSR_FAIL;
-                   
+                
+                movea TESTSTATUS,a0
+                moveq 1,$0c(a0)
                 rts   
                 
                 
 BSR_CLOSE2:     move.l #$22222222,d2
                 rts
 
-BSR_FAIL: bra BSR_FAIL
+BSR_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$0c(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -2185,9 +2234,14 @@ op_CMP_I:
             bcc CMP_I_FAIL;                       ; Check C Flag  bcc/bcs
             bvc CMP_I_FAIL;                       ; Check V Flag  bvc/bvs     
             
+            movea TESTSTATUS,a0
+            moveq 1,$0d(a0)
             rts
             
-CMP_I_FAIL: bra CMP_I_FAIL
+CMP_I_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$0d(a0)
+    rts
   
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -2324,9 +2378,14 @@ op_ADD_I:
             cmpi.l #$278EFBD2,$000F0100                           
             bne ADD_I_FAIL;                       ; Check Z Flag  beq/bne
     
+            movea TESTSTATUS,a0
+            moveq 1,$0e(a0)
             rts
 
-ADD_I_FAIL: bra ADD_I_FAIL
+ADD_I_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$0e(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -2463,10 +2522,14 @@ op_SUB_I:
             cmpi.l #$FCD9B11E,$000F0100                           
             bne SUB_I_FAIL;                       ; Check Z Flag  beq/bne
             
+            movea TESTSTATUS,a0
+            moveq 1,$0f(a0)
             rts
     
-SUB_I_FAIL: bra SUB_I_FAIL  
-
+SUB_I_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$0f(a0) 
+    rts
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
 ; OPCODE : MOVE
@@ -2654,10 +2717,15 @@ MOVE3:      move.l  $00010104,6(a0,d1.w)    ; LONG
             cmpi.l #$78782323,6(a0,d1.w)                           
             bne MOVE_FAIL;                       ; Check Z Flag  beq/bne
         
-        
+
+         movea TESTSTATUS,a0
+         moveq 1,$10(a0)        
          rts
 
-MOVE_FAIL: bra MOVE_FAIL
+MOVE_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$10(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -2894,9 +2962,14 @@ MOVE4:      move.w #$2000,$00010100
             
             move #$2700,SR        ; Put flags back to initial value
 
+            movea TESTSTATUS,a0
+            moveq 1,$11(a0)
             rts
 
-MOVE_FLAGS_FAIL: bra MOVE_FLAGS_FAIL
+MOVE_FLAGS_FAIL: 
+    movea TESTSTATUS,a0
+    moveq 2,$11(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -2924,9 +2997,14 @@ op_EXT:
             ext.l d2
             bne EXT_FAIL;                   ; Check Z Flag  beq/bne
 
+            movea TESTSTATUS,a0
+            moveq 1,$12(a0)
             rts
 
-EXT_FAIL: bra EXT_FAIL
+EXT_FAIL: 
+    movea TESTSTATUS,a0
+    moveq 2,$12(a0)
+    rts
              
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -2943,9 +3021,14 @@ op_SWAP:
             cmpi.l #$56781234,d0
             bne SWAP_FAIL;                   ; branch if Z set  
 
+            movea TESTSTATUS,a0
+            moveq 1,$13(a0)
             rts
 
-SWAP_FAIL: bra SWAP_FAIL       
+SWAP_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$13(a0) 
+    rts
              
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -3022,9 +3105,14 @@ LEA1:       pea LEA1(pc)
           
             move #$2700,SR        ; Put flags back to initial value
 
+            movea TESTSTATUS,a0
+            moveq 1,$14(a0)
             rts
     
-LEAPEA_FAIL: bra LEAPEA_FAIL
+LEAPEA_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$14(a0)
+    rts
              
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -3052,9 +3140,14 @@ op_TAS:
             cmpi.b #$F5,(a0)
             bne TAS_FAIL                   ; branch if Z set  
 
+            movea TESTSTATUS,a0
+            moveq 1,$15(a0)
             rts
             
-TAS_FAIL: bra TAS_FAIL
+TAS_FAIL: 
+    movea TESTSTATUS,a0
+    moveq 2,$15(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -3097,9 +3190,14 @@ op_TST:
             bpl TST_FAIL;                   ; Check N Flag  bmi/bpl
             beq TST_FAIL;                   ; Check Z Flag  beq/bne
 
+            movea TESTSTATUS,a0
+            moveq 1,$16(a0)
             rts
 
-TST_FAIL: bra TST_FAIL    
+TST_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$16(a0)
+    rts   
      
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -3117,9 +3215,14 @@ op_LINKS:
             cmp.l d0,a0
             bne LINK_FAIL;                   ; branch if Z set  
 
+            movea TESTSTATUS,a0
+            moveq 1,$17(a0)
             rts
 
-LINK_FAIL: bra LINK_FAIL
+LINK_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$17(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -3136,9 +3239,14 @@ op_MOVE_USP:
             bne MOVE_USP_FAIL;                   ; branch if Z set  
             move a3,USP
 
+            movea TESTSTATUS,a0
+            moveq 1,$18(a0)
             rts
 
-MOVE_USP_FAIL: bra MOVE_USP_FAIL
+MOVE_USP_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$18(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -3168,9 +3276,14 @@ op_CHK:
             cmp.l #$EEEE0006,d6
             bne CHK_FAIL;                   ; branch if Z set  
 
+            movea TESTSTATUS,a0
+            moveq 1,$19(a0)
             rts
       
-CHK_FAIL: bra CHK_FAIL
+CHK_FAIL: 
+    movea TESTSTATUS,a0
+    moveq 2,$19(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -3542,9 +3655,14 @@ op_NEGS:
             cmpi.l #$F5675679,(a0)
             bne NEGS_FAIL;                   ; Check Z Flag  beq/bne
 
+        movea TESTSTATUS,a0
+        moveq 1,$1a(a0)
         rts
 
-        NEGS_FAIL: bra NEGS_FAIL
+        NEGS_FAIL:
+            movea TESTSTATUS,a0
+            moveq 2,$1a(a0)
+            rts
 
        
 ; -----         
@@ -3577,9 +3695,14 @@ op_CLR:
             cmp.l d2,d6
             bne CLR_FAIL;                   ; Check Z Flag  beq/bne 0
 
+            movea TESTSTATUS,a0
+            moveq 1,$1b(a0)
             rts      
             
-CLR_FAIL: bra CLR_FAIL
+CLR_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$1b(a0)
+    rts
                           
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -3891,9 +4014,14 @@ op_MOVEM:
             cmp.l #$D6D6D6D6,a5           
             bne MOVEM_FAIL;                   ; Check Z Flag  beq/bne 0
             
+            movea TESTSTATUS,a0
+            moveq 1,$1c(a0)
             rts     
 
-MOVEM_FAIL: bra MOVEM_FAIL
+MOVEM_FAIL: 
+    movea TESTSTATUS,a0
+    moveq 2,$1c(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -3997,9 +4125,14 @@ ABCD_NO_C4:     add.b (a1),d3
                 abcd d1,d0                  ; Should NOT set Z Flag to 1
                 beq ABCD_FAIL;                       ; Check Z Flag  beq/bne
                 
+                movea TESTSTATUS,a0
+                moveq 1,$1d(a0)
                 rts   
 
-ABCD_FAIL: bra ABCD_FAIL
+ABCD_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$1d(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4103,9 +4236,14 @@ SBCD_NO_C4:     add.b (a1),d3
                 sbcd d1,d0                  ; Should NOT set Z Flag to 1
                 beq SBCD_FAIL;                       ; Check Z Flag  beq/bne
 
-                rts   
+                movea TESTSTATUS,a0
+                moveq 1,$1e(a0)
+                rts
 
-SBCD_FAIL: bra SBCD_FAIL           
+SBCD_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$1e(a0)
+    rts  
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
 ; OPCODE : NBCD
@@ -4177,10 +4315,14 @@ NBCD_NO_Z1:     add.l d0,d5         ; Add results into d5
                 cmpi.l #$00002E3B,d5
                 bne NBCD_FAIL;     
            
-
+                movea TESTSTATUS,a0
+                moveq 1,$1f(a0)
                 rts   
 
-NBCD_FAIL: bra NBCD_FAIL
+NBCD_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$1f(a0)
+    rts
                
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4203,10 +4345,14 @@ op_TRAPV:
                cmpi.l #$12345678,d0  ; Check of d0 was updated (should not be_)
                bne TRAPV_FAIL;       
 
+               movea TESTSTATUS,a0
+               moveq 1,$20(a0)
+               rts   
 
-                rts   
-
-TRAPV_FAIL: bra TRAPV_FAIL
+TRAPV_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$20(a0)
+    rts
                
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4226,13 +4372,18 @@ RTR_DONE:       move SR,d0
                 cmpi #$15,d0
                 bne RTR_FAIL;
                 
+                movea TESTSTATUS,a0
+                moveq 1,$21(a0)
                 rts   
 
    
 BSR_FAR2:       move.l #$44444444,d4
                 rts
 
-RTR_FAIL: bra RTR_FAIL
+RTR_FAIL:
+    movea TESTSTATUS,a0
+    moveq 1,$21(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4297,10 +4448,15 @@ BCC13:          move #$06,CCR
                 bra BCC_FAIL;
                
 
-BCC14:          rts
+BCC14:          movea TESTSTATUS,a0
+                moveq 1,$22(a0)
+                rts
   
 
-BCC_FAIL: bra BCC_FAIL
+BCC_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$22(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4324,9 +4480,14 @@ DBCC_LOOP2:     addi.b #$1,d1
                 cmpi.l #$00000005,d1  ; Check Accumulator results
                 bne DBCC_FAIL;       
             
+                movea TESTSTATUS,a0
+                moveq 1,$23(a0)
                 rts
                 
-DBCC_FAIL: bra DBCC_FAIL
+DBCC_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$23(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4344,9 +4505,14 @@ op_SCC:         move #$01,CCR
                 cmpi.b #$FF,$00010000
                 bne SCC_FAIL;       
 
+                movea TESTSTATUS,a0
+                moveq 1,$24(a0)
                 rts
                 
-SCC_FAIL: bra SCC_FAIL
+SCC_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$24(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4431,9 +4597,14 @@ ADDQ_LOOP3:     addq.l #1,d5
                 addq.w #$7,a0         
                 bcs ADDQ_FAIL;
 
+                movea TESTSTATUS,a0
+                moveq 1,$25(a0)
                 rts
         
-ADDQ_FAIL: bra ADDQ_FAIL
+ADDQ_FAIL: 
+    movea TESTSTATUS,a0
+    moveq 2,$25(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4518,10 +4689,15 @@ SUBQ_LOOP3:     subq.l #1,d5
                 subq.w #$7,a0         
                 bcs SUBQ_FAIL;
 
+                movea TESTSTATUS,a0
+                moveq 1,$26(a0)
                 rts
 
-SUBQ_FAIL: bra SUBQ_FAIL     
-        
+SUBQ_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$26(a0)  
+    rts
+
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
 ; OPCODE : MOVEQ
@@ -4542,10 +4718,14 @@ op_MOVEQ:
                 cmpi.l #$FFFFFF80,d0
                 bne MOVEQ_FAIL;
 
-
+                movea TESTSTATUS,a0
+                moveq 1,$27(a0)
                 rts
 
-MOVEQ_FAIL: bra MOVEQ_FAIL  
+MOVEQ_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$27(a0)
+    rts
    
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4585,10 +4765,14 @@ DIVU_OUTER1:    divu d1,d0               ; !! Easy68K C not always cleared
                 cmpi.l #$000000d8,d5      ; Check the Flag results #FIXME: was 0x110
                 bne DIVU_FAIL;                 
           
-
+                movea TESTSTATUS,a0
+                moveq 1,$28(a0)
                 rts
                 
-DIVU_FAIL: bra DIVU_FAIL 
+DIVU_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$28(a0)
+    rts
    
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4628,10 +4812,14 @@ DIVS_OUTER1:    divs d1,d0               ; !! Easy68K C not always cleared
                 cmpi.l #$00000078,d5      ; Check the Flag results #FIXME: was 0x38
                 bne DIVS_FAIL;                 
           
-
+                movea TESTSTATUS,a0
+                moveq 1,$29(a0)
                 rts
        
-DIVS_FAIL: bra DIVS_FAIL
+DIVS_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$29(a0)
+    rts
    
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4746,10 +4934,14 @@ OR_OUTER2:
                 cmpi.l #$00005730,d5      ; Check the Flag results
                 bne OR_FAIL;                 
                    
-                   
+                movea TESTSTATUS,a0
+                moveq 1,$2a(a0)
                 rts
                 
-OR_FAIL: bra OR_FAIL              
+OR_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$2a(a0)
+    rts 
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4864,10 +5056,14 @@ AND_OUTER2:
                 cmpi.l #$000018E8,d5      ; Check the Flag results
                 bne AND_FAIL;                 
                    
-                   
+                movea TESTSTATUS,a0
+                moveq 1,$2b(a0) 
                 rts
                 
-AND_FAIL: bra AND_FAIL              
+AND_FAIL: 
+    movea TESTSTATUS,a0
+    moveq 2,$2b(a0)    
+    rts     
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4929,10 +5125,14 @@ EOR_OUTER2:
                 cmpi.l #$00004430,d5      ; Check the Flag results
                 bne EOR_FAIL;                 
                    
-                   
+                movea TESTSTATUS,a0
+                moveq 1,$2c(a0)
                 rts
                 
-EOR_FAIL: bra EOR_FAIL
+EOR_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$2c(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4995,11 +5195,14 @@ CMP_OUTER1:
                 cmpi.l #$00005502,d5      ; Check the Flag results
                 bne CMP_FAIL;                
                    
-                   
-
+                movea TESTSTATUS,a0
+                moveq 1,$2d(a0)
                 rts
 
-CMP_FAIL: bra CMP_FAIL
+CMP_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$2d(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -5055,10 +5258,14 @@ CMPA_OUTER1:
                 cmpi.l #$00003A7D,d5      ; Check the Flag results
                 bne CMPA_FAIL;                
                        
-
+                movea TESTSTATUS,a0
+                moveq 1,$2e(a0)
                 rts
 
-CMPA_FAIL: bra CMPA_FAIL
+CMPA_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$2e(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -5124,9 +5331,14 @@ CMPM_LOOP3:     cmpm.l (a0)+,(a1)+
                 cmpi.l #$00000012,d2      
                 bne CMPM_FAIL;                
         
+                movea TESTSTATUS,a0
+                moveq 1,$2f(a0)
                 rts
 
-CMPM_FAIL: bra CMPM_FAIL
+CMPM_FAIL: 
+    movea TESTSTATUS,a0
+    moveq 2,$2f(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -5239,10 +5451,15 @@ ADD_OUTER2:
                 bne ADD_FAIL;                
                 cmpi.l #$00005467,d5      ; Check the Flag results
                 bne ADD_FAIL;                 
-                   
+                
+                movea TESTSTATUS,a0
+                moveq 1,$30(a0)
                 rts
 
-ADD_FAIL: bra ADD_FAIL
+ADD_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$30(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -5355,9 +5572,14 @@ SUB_OUTER2:
                 cmpi.l #$000045A5,d5      ; Check the Flag results
                 bne SUB_FAIL;                 
 
+                movea TESTSTATUS,a0
+                moveq 1,$31(a0)
                 rts
 
-SUB_FAIL: bra SUB_FAIL
+SUB_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$31(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -5402,10 +5624,14 @@ ADDA_OUTER1:
                 cmpi.l #$AC04DB4C,d4      ; Check the data results
                 bne ADDA_FAIL;                
               
-                 
+                movea TESTSTATUS,a0
+                moveq 1,$32(a0)
                 rts
 
-ADDA_FAIL: bra ADDA_FAIL
+ADDA_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$32(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -5450,10 +5676,14 @@ SUBA_OUTER1:
                 cmpi.l #$E1E36D7A,d4      ; Check the data results
                 bne SUBA_FAIL;                
               
-                 
+                movea TESTSTATUS,a0
+                moveq 1,$33(a0)
                 rts
 
-SUBA_FAIL: bra SUBA_FAIL
+SUBA_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$33(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -5572,9 +5802,13 @@ ADDX_LOOP5:     addx.l -(a0),-(a1)
                 cmpi.l #$C812A682,d1      ; Check the data results 
                 bne ADDX_FAIL;                
  
+                movea TESTSTATUS,a0
+                moveq 1,$34(a0)
                 rts
 
-ADDX_FAIL: bra ADDX_FAIL
+ADDX_FAIL:
+    movea TESTSTATUS,a0
+    moveq 1,$34(a0)
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -5693,9 +5927,14 @@ SUBX_LOOP5:     subx.l -(a0),-(a1)
                 cmpi.l #$62C6F417,d1      ; Check the data results 
                 bne SUBX_FAIL;                
  
+                movea TESTSTATUS,a0
+                moveq 1,$35(a0)
                 rts
 
-SUBX_FAIL: bra SUBX_FAIL
+SUBX_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$35(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -5734,10 +5973,14 @@ MULU_OUTER1:    mulu d1,d0
                 cmpi.l #$00000170,d5      ; Check the Flag results
                 bne MULU_FAIL;                 
           
-
+                movea TESTSTATUS,a0
+                moveq 1,$36(a0)
                 rts
 
-MULU_FAIL: bra MULU_FAIL               
+MULU_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$36(a0)
+    rts            
                 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -5776,10 +6019,14 @@ MULS_OUTER1:    muls d1,d0
                 cmpi.l #$000003E0,d5      ; Check the Flag results
                 bne MULS_FAIL;                 
           
-
+                movea TESTSTATUS,a0
+                moveq 1,$37(a0)
                 rts
                 
-MULS_FAIL: bra MULS_FAIL
+MULS_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$37(a0)
+    rts
                 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -5817,9 +6064,14 @@ op_EXG:
                 cmpi.l #$d3d3d3d3,d3     
                 bne EXG_FAIL;                 
  
+                movea TESTSTATUS,a0
+                moveq 1,$38(a0)
                 rts
       
-EXG_FAIL: bra EXG_FAIL
+EXG_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$38(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -6043,9 +6295,14 @@ ROx_LOOP6:
                 cmpi.l #$0000001B,d5     
                 bne ROX_FAIL;                 
 
+                movea TESTSTATUS,a0
+                moveq 1,$39(a0)
                 rts
       
-ROX_FAIL: bra ROX_FAIL   
+ROX_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$39(a0)
+    rts
                 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -6269,9 +6526,14 @@ ROXx_LOOP6:
                 cmpi.l #$0000000A,d5     
                 bne ROXX_FAIL;                 
 
+                movea TESTSTATUS,a0
+                moveq 1,$3a(a0)
                 rts        
 
-ROXX_FAIL: bra ROXX_FAIL
+ROXX_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$3a(a0)
+    rts
  
                 
 ;-----------------------------------------------------------
@@ -6498,9 +6760,14 @@ SHIFTS_LOOP6:
                 cmpi.l #$0000003E,d5     
                 bne SHIFT_FAIL;                 
 
+                movea TESTSTATUS,a0
+                moveq 1,$3b(a0)
                 rts      
         
-SHIFT_FAIL: bra SHIFT_FAIL
+SHIFT_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$3b(a0)
+    rts
                 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -6726,6 +6993,11 @@ SHIFTS2_LOOP6:
                 cmpi.l #$0000000A,d5     
                 bne LSHIFT_FAIL;                 
 
+                movea TESTSTATUS,a0
+                moveq 1,$3c(a0)
                 rts      
 
-LSHIFT_FAIL: bra LSHIFT_FAIL
+LSHIFT_FAIL:
+    movea TESTSTATUS,a0
+    moveq 2,$3c(a0)
+    rts

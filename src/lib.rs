@@ -4,22 +4,22 @@ use std::rc::Rc;
 mod instructions;
 pub mod memory;
 mod parser;
-mod processor;
+pub mod processor;
 use memory::Bus;
 use processor::{CPU, Debugger};
 mod conversions;
 pub mod devices;
 use devices::Signal;
-mod fields;
+pub mod fields;
 use fields::{EAMode, OpResult};
 pub mod atari;
 
 pub struct Configuration {
-    base_address: u32,
-    start_address: u32,
-    initial_ssp: u32,
-    bus: Bus,
-    memory_layout: Vec<(usize, OpResult)>
+    pub base_address: u32,
+    pub start_address: u32,
+    pub initial_ssp: u32,
+    pub bus: Bus,
+    pub memory_layout: Vec<(usize, OpResult)>
 }
 
 pub struct Emulator {
