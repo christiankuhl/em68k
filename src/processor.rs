@@ -108,7 +108,7 @@ impl CPU {
     pub fn memory_handle(&mut self, mode: EAMode) -> MemoryHandle {
         match mode {
             EAMode::DataDirect(register) => MemoryHandle::new(Some(Rc::clone(&self.dr[register])), None, None, self),
-            EAMode::AddressDirect(register) => MemoryHandle::new(Some(Rc::clone(&self.ar[register].clone())), None, None, self),
+            EAMode::AddressDirect(register) => MemoryHandle::new(Some(self.ar(register)), None, None, self),
             EAMode::AddressIndirect(register) => {
                 let ptr = *self.ar[register].borrow() as usize;
                 MemoryHandle::new(None, Some(ptr), None, self)
@@ -179,6 +179,13 @@ impl CPU {
                 MemoryHandle::new(None, Some(ptr), None, self)
             }
             _ => panic!("Invalid addressing mode!"),
+        }
+    }
+    pub fn ar(&mut self, register: usize) -> RegPtr {
+        if self.in_supervisor_mode() && register == 7 {
+            Rc::clone(&self.ssp)
+        } else {
+            Rc::clone(&self.ar[register])
         }
     }
     pub fn supervisor_mode(&mut self, value: bool) {

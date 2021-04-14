@@ -1,5 +1,5 @@
 use em68k::{Emulator, Configuration};
-use em68k::devices::{Device, Signal};
+use em68k::devices::{Device, Signal, Ram};
 use em68k::memory::{Bus, MemoryRange};
 use em68k::fields::{OpResult, Size};
 use em68k::processor::IRQ;
@@ -55,12 +55,13 @@ impl fmt::Display for TestDevice {
 
 fn test_configuration() -> Configuration {
     let mut bus = Bus::new();
+    bus.attach(Ram::new(0xfff8000));
     bus.attach(TestDevice::new());
     
     Configuration {
         base_address: 0x0,
         start_address: 0x400,
-        initial_ssp: 0x0,
+        initial_ssp: 0x3f0,
         bus: bus,
         memory_layout: Vec::new(),
     }
@@ -69,5 +70,5 @@ fn test_configuration() -> Configuration {
 #[test]
 fn test_m68k_opcodes() {
     let mut em = Emulator::new(test_configuration());
-    em.run("opcode_tests.bin", false);
+    em.run("tests/opcode_tests.bin", false);
 }

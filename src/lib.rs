@@ -30,7 +30,7 @@ pub struct Emulator {
 impl Emulator {
     pub fn run(&mut self, program: &str, debug: bool) {
         self.load(program);
-        let mut debugger = Debugger::new();
+        let mut debugger = if debug { Some(Debugger::new()) } else { None };
         let mut idle = false;
         loop {
             if !idle {
@@ -43,7 +43,7 @@ impl Emulator {
                 idle = false;
             }
             if debug {
-                match debugger.update(&mut self.cpu) {
+                match debugger.as_mut().unwrap().update(&mut self.cpu) {
                     Signal::Quit => return,
                     Signal::NoOp => {
                         idle = true;

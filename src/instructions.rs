@@ -168,7 +168,8 @@ impl Instruction {
                 }
             }
             Self::RTR => {
-                let mut sp = cpu.ar[7].as_ref().borrow_mut();
+                let mut _sp = cpu.ar(7);
+                let mut sp = _sp.as_ref().borrow_mut();
                 let mut ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 let ccr = ram_handle.read(Word).inner() as u16 & 0x00ff;
                 cpu.sr &= 0xff00;
@@ -179,7 +180,7 @@ impl Instruction {
                 *sp += 4;
             }
             Self::RTS => {
-                let mut sp = cpu.ar[7].as_ref().borrow_mut();
+                let mut sp = cpu.ar(7).as_ref().borrow_mut();
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 cpu.pc = ram_handle.read(Long).inner();
                 *sp += 4;
@@ -199,9 +200,9 @@ impl Instruction {
                 }
             }
             Self::LINK { register, displacement } => {
-                let mut sp = cpu.ar[7].as_ref().borrow_mut();
+                let mut sp = cpu.ar(7).as_ref().borrow_mut();
                 *sp -= 4;
-                let mut ar = cpu.ar[register].as_ref().borrow_mut();
+                let mut ar = cpu.ar(register).as_ref().borrow_mut();
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(*ar));
                 *ar = *sp;
@@ -218,8 +219,8 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::UNLK { register } => {
-                let mut sp = cpu.ar[7].as_ref().borrow_mut();
-                let mut ar = cpu.ar[register].as_ref().borrow_mut();
+                let mut sp = cpu.ar(7).as_ref().borrow_mut();
+                let mut ar = cpu.ar(register).as_ref().borrow_mut();
                 *sp = *ar;
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 *ar = ram_handle.read(Long).inner();
@@ -242,12 +243,12 @@ impl Instruction {
                     privilege_violation(cpu);
                 } else {
                     if dr == 0 {
-                        let ar = cpu.ar[register].as_ref().borrow();
-                        let mut usp = cpu.ar[7].as_ref().borrow_mut();
+                        let ar = cpu.ar(register).as_ref().borrow();
+                        let mut usp = cpu.ar(7).as_ref().borrow_mut();
                         *usp = *ar;
                     } else {
-                        let mut ar = cpu.ar[register].as_ref().borrow_mut();
-                        let usp = cpu.ar[7].as_ref().borrow();
+                        let mut ar = cpu.ar(register).as_ref().borrow_mut();
+                        let usp = cpu.ar(7).as_ref().borrow();
                         *ar = *usp;
                     }
                 }
@@ -271,7 +272,7 @@ impl Instruction {
             Self::JSR { mode } => {
                 let pc = cpu.pc;
                 cpu.pc = cpu.memory_address(mode);
-                let mut sp = cpu.ar[7].as_ref().borrow_mut();
+                let mut sp = cpu.ar(7).as_ref().borrow_mut();
                 *sp -= 4;
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(pc));
@@ -295,7 +296,7 @@ impl Instruction {
             }
             Self::PEA { mode } => {
                 let addr = cpu.memory_address(mode);
-                let mut sp = cpu.ar[7].as_ref().borrow_mut();
+                let mut sp = cpu.ar(7).as_ref().borrow_mut();
                 *sp -= 4;
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(addr));
@@ -362,7 +363,7 @@ impl Instruction {
                             let register;
                             if mode == AddressPredecr(0, Byte) {
                                 if j < 8 {
-                                    register = cpu.ar[7 - j].as_ref().borrow();
+                                    register = cpu.ar(7 - j).as_ref().borrow();
                                 } else {
                                     register = cpu.dr[15 - j].as_ref().borrow();
                                 }
@@ -370,7 +371,7 @@ impl Instruction {
                                 if j < 8 {
                                     register = cpu.dr[j].as_ref().borrow();
                                 } else {
-                                    register = cpu.ar[j - 8].as_ref().borrow();
+                                    register = cpu.ar(j - 8).as_ref().borrow();
                                 }
                             }
                             if size == Word {
@@ -395,7 +396,7 @@ impl Instruction {
                             if j < 8 {
                                 register = cpu.dr[j].as_ref().borrow_mut();
                             } else {
-                                register = cpu.ar[j - 8].as_ref().borrow_mut();
+                                register = cpu.ar(j - 8).as_ref().borrow_mut();
                             }
                             if size == Word {
                                 result = ((src.read(size).inner() & 0xffff) as i16) as u32
@@ -551,7 +552,7 @@ impl Instruction {
             }
             Self::BSR { displacement } => {
                 let pc = (cpu.pc as i32 + displacement) as u32;
-                let mut sp = cpu.ar[7].as_ref().borrow_mut();
+                let mut sp = cpu.ar(7).as_ref().borrow_mut();
                 *sp -= 4;
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(cpu.pc));
@@ -609,7 +610,7 @@ impl Instruction {
             Self::ADDA { register, opmode, mode } => {
                 let size = Size::from_opcode(opmode / 4 + 1);
                 let operand = cpu.memory_handle(mode).read(size);
-                let mut reg = cpu.ar[register].as_ref().borrow_mut();
+                let mut reg = cpu.ar(register).as_ref().borrow_mut();
                 match operand {
                     OpResult::Word(w) => {
                         let addr = w as i16 as i32;
@@ -622,7 +623,7 @@ impl Instruction {
             Self::SUBA { register, opmode, mode } => {
                 let size = Size::from_opcode(opmode / 4 + 1);
                 let operand = cpu.memory_handle(mode).read(size);
-                let mut reg = cpu.ar[register].as_ref().borrow_mut();
+                let mut reg = cpu.ar(register).as_ref().borrow_mut();
                 match operand {
                     OpResult::Word(w) => {
                         let addr = w as i16 as i32;
@@ -707,7 +708,7 @@ impl Instruction {
             }
             Self::LEA { register, mode } => {
                 let addr = cpu.memory_address(mode);
-                cpu.ar[register].replace(addr);
+                cpu.ar(register).replace(addr);
             }
             Self::MULS { register, mode } => {
                 let src = cpu.memory_handle(mode);
@@ -856,12 +857,12 @@ impl Instruction {
             Self::MOVEA { register, size, mode } => match size {
                 Long => {
                     let src = cpu.memory_handle(mode).read(Long).inner();
-                    let mut dest = cpu.ar[register].as_ref().borrow_mut();
+                    let mut dest = cpu.ar(register).as_ref().borrow_mut();
                     *dest = src;
                 }
                 Word => {
                     let src = cpu.memory_handle(mode).read(Word).inner() as i16;
-                    let mut dest = cpu.ar[register].as_ref().borrow_mut();
+                    let mut dest = cpu.ar(register).as_ref().borrow_mut();
                     *dest = src as u32;
                 }
                 _ => panic!("Invalid operand size!"),
