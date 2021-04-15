@@ -110,29 +110,29 @@ impl CPU {
             EAMode::DataDirect(register) => MemoryHandle::new(Some(Rc::clone(&self.dr[register])), None, None, self),
             EAMode::AddressDirect(register) => MemoryHandle::new(Some(self.ar(register)), None, None, self),
             EAMode::AddressIndirect(register) => {
-                let ptr = *self.ar[register].borrow() as usize;
+                let ptr = *self.ar(register).borrow() as usize;
                 MemoryHandle::new(None, Some(ptr), None, self)
             }
             EAMode::AddressPostincr(register, size) => {
-                let ptr = (*self.ar[register]).borrow().clone() as usize;
+                let ptr = (*self.ar(register)).borrow().clone() as usize;
                 if register == 7 && size == Size::Byte {
-                    *self.ar[register].borrow_mut() += 2;
+                    *self.ar(register).borrow_mut() += 2;
                 } else {
-                    *self.ar[register].borrow_mut() += size as u32;
+                    *self.ar(register).borrow_mut() += size as u32;
                 }
                 MemoryHandle::new(None, Some(ptr), None, self)
             }
             EAMode::AddressPredecr(register, size) => {
                 if register == 7 && size == Size::Byte {
-                    *self.ar[register].borrow_mut() -= 2;
+                    *self.ar(register).borrow_mut() -= 2;
                 } else {
-                    *self.ar[register].borrow_mut() -= size as u32;
+                    *self.ar(register).borrow_mut() -= size as u32;
                 }
-                let ptr = *self.ar[register].borrow() as usize;
+                let ptr = *self.ar(register).borrow() as usize;
                 MemoryHandle::new(None, Some(ptr), None, self)
             }
             EAMode::AddressDisplacement(register, displacement) => {
-                let ptr = (*self.ar[register].borrow() as i32 + displacement as i32) as u32 as usize;
+                let ptr = (*self.ar(register).borrow() as i32 + displacement as i32) as u32 as usize;
                 MemoryHandle::new(None, Some(ptr), None, self)
             }
             EAMode::AddressIndex8Bit(register, iregister, displacement, size, scale, da) => {
@@ -144,7 +144,7 @@ impl CPU {
                 let mut ptr = index_handle.read(size).sign_extend() as i32;
                 ptr *= 1 << scale;
                 ptr += displacement as i32;
-                ptr += *self.ar[register].borrow() as i32;
+                ptr += *self.ar(register).borrow() as i32;
                 MemoryHandle::new(None, Some(ptr as usize), None, self)
             }
             EAMode::AddressIndexBase(register, iregister, displacement, size, scale, da) => {
@@ -156,7 +156,7 @@ impl CPU {
                 let mut ptr = index_handle.read(size).sign_extend() as i32;
                 ptr *= 1 << scale;
                 ptr += displacement;
-                ptr += *self.ar[register].borrow() as i32;
+                ptr += *self.ar(register).borrow() as i32;
                 MemoryHandle::new(None, Some(ptr as usize), None, self)
             }
             EAMode::AbsoluteShort(ptr) => MemoryHandle::new(None, Some(ptr), None, self),
@@ -269,10 +269,11 @@ impl fmt::Display for CPU {
         s.push_str(&format!("{r}║ CPU state                        ║", r = cursor::Goto(1, 3)));
         s.push_str(&format!("{r}╟─────┬───────────┬────┬───────────╫", r = cursor::Goto(1, 4)));
         for j in 0..8 {
+            let ar = if !self.in_supervisor_mode() || j != 7 { *self.ar[j].borrow() } else { *self.ssp.borrow() };
             s.push_str(&format!(
                 "{r}║ A{j}  │  {a:08x} │ D{j} │  {d:08x} ║\n",
                 j = j,
-                a = *self.ar[j].borrow(),
+                a = ar,
                 d = *self.dr[j].borrow(),
                 r = cursor::Goto(1, (j + 5) as u16),
             ));

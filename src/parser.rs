@@ -455,7 +455,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         [0x8, register, _DIVU, mode, earegister] if mode < &7 || earegister < &5 => {
             return Some(DIVU { register: *register, mode: EAMode::from(Size::Word, *mode, *earegister, cpu) })
         }
-        [0x4, register, _LEA, mode, earegister] if (mode < &7 || earegister < &5) && mode > &2 && mode != &3 && mode != &4 => {
+        [0x4, register, _LEA, mode, earegister] if (mode < &7 || earegister < &5) && mode > &1 && mode != &3 && mode != &4 => {
             return Some(LEA { register: *register, mode: EAMode::from(Size::Long, *mode, *earegister, cpu) })
         }
         [0xc, register, _MULS, mode, earegister] if mode < &7 || earegister < &5 => {
@@ -544,7 +544,7 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         _ => {}
     }
     match split_instruction(opcode, vec![4, 3, 3, 3, 3]).as_slice() {
-        [_ADD, register, opmode, mode, earegister] if (opmode < &6 && opmode != &3) && (mode < &7 || earegister < &5) => {
+        [_ADD, register, opmode, mode, earegister] if (opmode < &7 && opmode != &3) && (mode < &7 || earegister < &5) => {
             let opmode_str = OpMode::from_opcode(*opmode);
             let size = opmode_str.size();
             return Some(ADD {

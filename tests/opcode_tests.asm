@@ -125,6 +125,7 @@ EXCEPTION_7:
    jsr op_BSET
    jsr op_MOVEP
    jsr op_BOOL_I
+   jsr op_BSR
    jsr op_CMP_I
    jsr op_ADD_I
    jsr op_SUB_I
@@ -141,20 +142,19 @@ EXCEPTION_7:
    jsr op_NEGS
    jsr op_CLR
    jsr op_MOVEM
-   jsr op_ABCD
-   jsr op_SBCD
-   jsr op_NBCD
+   ;jsr op_ABCD
+   ;jsr op_SBCD
+   ;jsr op_NBCD
    jsr op_TRAPV
    jsr op_RTR
-   jsr op_BSR
    jsr op_BCC
    jsr op_DBCC
    jsr op_SCC
    jsr op_ADDQ
    jsr op_SUBQ
    jsr op_MOVEQ
-   jsr op_DIVU ;#FIXME: Flags
-   jsr op_DIVS ;#FIXME: Flags
+   jsr op_DIVU
+   jsr op_DIVS
    jsr op_OR
    jsr op_AND
    jsr op_EOR
@@ -2710,7 +2710,7 @@ MOVE3:      move.l  $00010104,6(a0,d1.w)    ; LONG
             move.l  MOVE3(pc,d3),$0100 ; LONG  
             beq MOVE_FAIL;                       ; Check Z Flag  beq/bne
             bmi MOVE_FAIL;                       ; Check N Flag  bmi/bpl
-            cmpi.l #$67386B36,8+MOVE3           
+            cmpi.l #$67426b40,8+MOVE3           
             bne MOVE_FAIL;                       ; Check Z Flag  beq/bne
                     
     ; #x -->    n(An,AL)
@@ -5624,7 +5624,7 @@ ADDA_OUTER1:
                 move.l #$0000001E,d6       ; Inner loop counter
                 dbf d7,ADDA_OUTER1
                 
-                cmpi.l #$AC04DB4C,d4      ; Check the data results
+                cmpi.l #$abe3cab5,d4       ; Check the data results
                 bne ADDA_FAIL;                
               
                 movea #TESTSTATUS,a0
@@ -5676,7 +5676,7 @@ SUBA_OUTER1:
                 move.l #$0000001E,d6       ; Inner loop counter
                 dbf d7,SUBA_OUTER1
                 
-                cmpi.l #$E1E36D7A,d4      ; Check the data results
+                cmpi.l #$6fecc6d7,d4 * #$E1E36D7A,d4      ; Check the data results
                 bne SUBA_FAIL;                
               
                 movea #TESTSTATUS,a0
@@ -5802,7 +5802,7 @@ ADDX_LOOP5:     addx.l -(a0),-(a1)
 
                 cmpi.l #$00000095,d0      ; Check the flag results
                 bne ADDX_FAIL;                
-                cmpi.l #$C812A682,d1      ; Check the data results 
+                cmpi.l #$c812a67f,d1 *#$C812A682,d1      ; Check the data results 
                 bne ADDX_FAIL;                
  
                 movea #TESTSTATUS,a0

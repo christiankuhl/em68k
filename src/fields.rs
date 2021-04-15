@@ -80,30 +80,32 @@ impl OpResult {
             Self::Long(l) => l as i32,
         }
     }
-    pub fn sub(&self, other: Self) -> (Self, CCRFlags) {
+    pub fn sub(&self, other: Self, extend: bool) -> (Self, CCRFlags) {
         let mut ccr = CCRFlags::new();
         let src = other.sign_extend();
         let dest = self.sign_extend();
-        let res = dest.wrapping_sub(src);
+        let res = dest.wrapping_sub(src).wrapping_sub(extend as i32);
         let result = self.size().from(res);
         let neg = result.sign_extend() < 0;
         ccr.n = Some(neg);
         ccr.z = Some(res == 0);
         ccr.v = Some((src >= 0 && dest < 0 && !neg) || (src < 0 && dest >= 0 && neg));
         ccr.c = Some((src < 0 && dest >= 0) || (neg && dest >= 0) || (src < 0 && neg));
+        ccr.x = ccr.c;
         (result, ccr)
     }
-    pub fn add(&self, other: Self) -> (Self, CCRFlags) {
+    pub fn add(&self, other: Self, extend: bool) -> (Self, CCRFlags) {
         let mut ccr = CCRFlags::new();
         let src = self.sign_extend();
         let dest = other.sign_extend();
-        let res = dest.wrapping_add(src);
+        let res = dest.wrapping_add(src).wrapping_add(extend as i32);
         let result = self.size().from(res);
         let neg = result.sign_extend() < 0;
         ccr.n = Some(neg);
         ccr.z = Some(res == 0);
         ccr.v = Some((src < 0 && dest < 0 && !neg) || (src >= 0 && dest >= 0 && neg));
         ccr.c = Some((src < 0 && dest < 0) || (!neg && dest < 0) || (src < 0 && !neg));
+        ccr.x = ccr.c;
         (result, ccr)
     }
     pub fn and(&self, other: Self) -> (Self, CCRFlags) {
@@ -319,6 +321,12 @@ impl EAMode {
             }
         }
     }
+    pub fn is_address_register(&self) -> bool {
+        match *self {
+            Self::AddressDirect(_) => true,
+            _ => false,
+        }
+    }
 }
 
 impl PartialEq for EAMode {
@@ -456,36 +464,42 @@ impl PackedBCD {
     pub fn from(res: OpResult) -> Self {
         match res {
             OpResult::Byte(b) => {
-                let ones = b & 0xf;
-                let tens = (b & 0xf0) >> 4;
-                Self(10 * tens + ones)
+                Self(b)
             }
             _ => panic!("Unsupported operation!"),
         }
     }
-    pub fn pack(&self) -> OpResult {
-        let mut ones = self.0 & 0xf;
+    pub fn add(&self, other: Self, extend: bool) -> (OpResult, bool) {
         let mut carry = 0;
-        let mut tens = (self.0 & 0xf0) >> 4;
-        if ones > 9 {
-            ones = (ones + 6) % 16;
+        let mut result = (self.0 & 0xf) + (other.0 & 0xf) + extend as u8;
+        if result > 9 {
+            result -= 10;
             carry = 1;
         }
-        tens += carry;
-        if tens > 9 {
-            tens = (tens + 6) % 16;
+        let mut temp_result = ((self.0 >> 4) & 0xf) + ((other.0 >> 4) & 0xf) + carry;
+        if temp_result > 9 {
+            temp_result -= 10;
+            carry = 1;
+        } else {
+            carry = 0;
         }
-        OpResult::Byte(ones + (tens << 4))
+        (OpResult::Byte(result + (temp_result << 4)), carry != 0)
     }
-    pub fn add(&self, other: Self, extend: bool) -> (Self, bool) {
-        let result = self.0 + other.0 + extend as u8;
-        let carry = result > 99;
-        (Self(result % 100), carry)
-    }
-    pub fn sub(&self, other: Self, extend: bool) -> (Self, bool) {
-        let result = self.0 as i8 - other.0 as i8 - extend as i8;
-        let carry = result > 99 || result < 0;
-        (Self((result.abs() % 100) as u8), carry)
+    pub fn sub(&self, other: Self, extend: bool) -> (OpResult, bool) {
+        let mut borrow = 0;
+        let mut result = (self.0 & 0xf) as i8 - (other.0 & 0xf) as i8 - extend as i8;
+        if result < 0 {
+            result += 10;
+            borrow = 1;
+        }
+        let mut temp_result = ((self.0 >> 4) & 0xf) as i8 - ((other.0 >> 4) & 0xf) as i8 - borrow;
+        if temp_result < 0 {
+            temp_result += 10;
+            borrow = 1;
+        } else {
+            borrow = 0;
+        }
+        (OpResult::Byte(result.wrapping_add(temp_result << 4) as u8), borrow != 0)
     }
     pub fn value(&self) -> u8 {
         self.0

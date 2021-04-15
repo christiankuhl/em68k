@@ -168,7 +168,7 @@ impl Instruction {
                 }
             }
             Self::RTR => {
-                let mut _sp = cpu.ar(7);
+                let _sp = cpu.ar(7);
                 let mut sp = _sp.as_ref().borrow_mut();
                 let mut ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 let ccr = ram_handle.read(Word).inner() as u16 & 0x00ff;
@@ -180,7 +180,8 @@ impl Instruction {
                 *sp += 4;
             }
             Self::RTS => {
-                let mut sp = cpu.ar(7).as_ref().borrow_mut();
+                let _sp = cpu.ar(7);
+                let mut sp = _sp.as_ref().borrow_mut();
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 cpu.pc = ram_handle.read(Long).inner();
                 *sp += 4;
@@ -200,9 +201,11 @@ impl Instruction {
                 }
             }
             Self::LINK { register, displacement } => {
-                let mut sp = cpu.ar(7).as_ref().borrow_mut();
+                let _sp = cpu.ar(7);
+                let mut sp = _sp.as_ref().borrow_mut();
                 *sp -= 4;
-                let mut ar = cpu.ar(register).as_ref().borrow_mut();
+                let _ar =  cpu.ar(register);
+                let mut ar = _ar.as_ref().borrow_mut();
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(*ar));
                 *ar = *sp;
@@ -219,8 +222,10 @@ impl Instruction {
                 ccr.set(cpu);
             }
             Self::UNLK { register } => {
-                let mut sp = cpu.ar(7).as_ref().borrow_mut();
-                let mut ar = cpu.ar(register).as_ref().borrow_mut();
+                let _sp = cpu.ar(7);
+                let mut sp = _sp.as_ref().borrow_mut();
+                let _ar = cpu.ar(register);
+                let mut ar = _ar.as_ref().borrow_mut();
                 *sp = *ar;
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 *ar = ram_handle.read(Long).inner();
@@ -243,12 +248,14 @@ impl Instruction {
                     privilege_violation(cpu);
                 } else {
                     if dr == 0 {
-                        let ar = cpu.ar(register).as_ref().borrow();
-                        let mut usp = cpu.ar(7).as_ref().borrow_mut();
+                        let _ar = cpu.ar(register); 
+                        let ar = _ar.as_ref().borrow();
+                        let mut usp = cpu.ar[7].as_ref().borrow_mut();
                         *usp = *ar;
                     } else {
-                        let mut ar = cpu.ar(register).as_ref().borrow_mut();
-                        let usp = cpu.ar(7).as_ref().borrow();
+                        let _ar = cpu.ar(register);
+                        let mut ar = _ar.as_ref().borrow_mut();
+                        let usp = cpu.ar[7].as_ref().borrow();
                         *ar = *usp;
                     }
                 }
@@ -272,7 +279,8 @@ impl Instruction {
             Self::JSR { mode } => {
                 let pc = cpu.pc;
                 cpu.pc = cpu.memory_address(mode);
-                let mut sp = cpu.ar(7).as_ref().borrow_mut();
+                let _sp = cpu.ar(7);
+                let mut sp = _sp.as_ref().borrow_mut();
                 *sp -= 4;
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(pc));
@@ -296,7 +304,8 @@ impl Instruction {
             }
             Self::PEA { mode } => {
                 let addr = cpu.memory_address(mode);
-                let mut sp = cpu.ar(7).as_ref().borrow_mut();
+                let _sp = cpu.ar(7);
+                let mut sp = _sp.as_ref().borrow_mut();
                 *sp -= 4;
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(addr));
@@ -358,12 +367,14 @@ impl Instruction {
                 if dr == 0 {
                     let mut tgt = cpu.memory_handle(mode);
                     let mut result;
+                    let mut _register;
                     for j in 0..16 {
                         if register_mask & (1 << j) != 0 {
                             let register;
                             if mode == AddressPredecr(0, Byte) {
                                 if j < 8 {
-                                    register = cpu.ar(7 - j).as_ref().borrow();
+                                    _register = cpu.ar(7 - j);
+                                    register = _register.as_ref().borrow();
                                 } else {
                                     register = cpu.dr[15 - j].as_ref().borrow();
                                 }
@@ -371,7 +382,8 @@ impl Instruction {
                                 if j < 8 {
                                     register = cpu.dr[j].as_ref().borrow();
                                 } else {
-                                    register = cpu.ar(j - 8).as_ref().borrow();
+                                    _register = cpu.ar(j - 8);
+                                    register = _register.as_ref().borrow();
                                 }
                             }
                             if size == Word {
@@ -390,13 +402,15 @@ impl Instruction {
                 } else if dr == 1 {
                     let mut src = cpu.memory_handle(mode);
                     let mut result;
+                    let mut _register;
                     for j in 0..16 {
                         if register_mask & (1 << j) != 0 {
                             let mut register;
                             if j < 8 {
                                 register = cpu.dr[j].as_ref().borrow_mut();
                             } else {
-                                register = cpu.ar(j - 8).as_ref().borrow_mut();
+                                _register = cpu.ar(j - 8); 
+                                register = _register.as_ref().borrow_mut();
                             }
                             if size == Word {
                                 result = ((src.read(size).inner() & 0xffff) as i16) as u32
@@ -420,14 +434,14 @@ impl Instruction {
                     src = cpu.memory_handle(AddressPredecr(ry, Byte));
                     dest = cpu.memory_handle(AddressPredecr(rx, Byte));
                 }
-                // println!("{} {}", src.read(Byte), dest.read(Byte));
                 let a = PackedBCD::from(src.read(Byte));
                 let b = PackedBCD::from(dest.read(Byte));
                 let (result, carry) = a.add(b, cpu.ccr(CCR::X));
-                dest.write(result.pack());
+                dest.write(result);
+                // cc_update (GEN, UND, CASE_1, UND, N_A, source, dest, result, (long) BYTE_MASK, 0);
                 ccr.x = Some(carry);
                 ccr.c = Some(carry);
-                if result.value() != 0 {
+                if result.inner() != 0 {
                     ccr.z = Some(false)
                 };
                 ccr.set(cpu);
@@ -446,17 +460,18 @@ impl Instruction {
                 let a = PackedBCD::from(dest.read(Byte));
                 let b = PackedBCD::from(src.read(Byte));
                 let (result, carry) = a.sub(b, cpu.ccr(CCR::X));
-                dest.write(result.pack());
+                dest.write(result);
                 ccr.c = Some(carry);
-                if result.value() != 0 {
+                if result.inner() != 0 {
                     ccr.z = Some(false)
                 };
+                // cc_update (GEN, UND, CASE_1, UND, N_A, source, dest, result, (long) BYTE_MASK, 0);
                 ccr.set(cpu);
             }
             Self::ADDI { size, mode, operand } => {
                 let handle = cpu.memory_handle(mode);
                 let dest_operand = handle.read(size);
-                let res = dest_operand.add(operand);
+                let res = dest_operand.add(operand, false);
                 let result = res.0;
                 let ccr = res.1;
                 handle.write(result);
@@ -479,7 +494,7 @@ impl Instruction {
             }
             Self::CMPI { size, mode, operand } => {
                 let dest_operand = cpu.memory_handle(mode).read(size);
-                let res = dest_operand.sub(operand);
+                let res = dest_operand.sub(operand, false);
                 let ccr = res.1;
                 ccr.set(cpu);
             }
@@ -494,7 +509,7 @@ impl Instruction {
             Self::NEG { size, mode } => {
                 let handle = cpu.memory_handle(mode);
                 let operand = handle.read(size);
-                let res = size.zero().sub(operand);
+                let res = size.zero().sub(operand, false);
                 let result = res.0;
                 let ccr = res.1;
                 handle.write(result);
@@ -504,7 +519,7 @@ impl Instruction {
                 let handle = cpu.memory_handle(mode);
                 let x = cpu.ccr(CCR::X);
                 let operand = handle.read(size);
-                let res = size.zero().sub(operand).0.sub(size.from(x as u8));
+                let res = size.zero().sub(operand, x);
                 let result = res.0;
                 let mut ccr = res.1;
                 let dm = operand.sign_extend() < 0;
@@ -534,7 +549,7 @@ impl Instruction {
             Self::SUBI { size, mode, operand } => {
                 let handle = cpu.memory_handle(mode);
                 let subtractor = handle.read(size);
-                let res = subtractor.sub(operand);
+                let res = subtractor.sub(operand, false);
                 let result = res.0;
                 let ccr = res.1;
                 handle.write(result);
@@ -542,7 +557,7 @@ impl Instruction {
             }
             Self::TST { size, mode } => {
                 let operand = cpu.memory_handle(mode).read(size);
-                let (_, mut ccr) = operand.sub(size.zero());
+                let (_, mut ccr) = operand.sub(size.zero(), false);
                 ccr.v = Some(false);
                 ccr.c = Some(false);
                 ccr.set(cpu);
@@ -552,7 +567,8 @@ impl Instruction {
             }
             Self::BSR { displacement } => {
                 let pc = (cpu.pc as i32 + displacement) as u32;
-                let mut sp = cpu.ar(7).as_ref().borrow_mut();
+                let _sp = cpu.ar(7);
+                let mut sp = _sp.as_ref().borrow_mut();
                 *sp -= 4;
                 let ram_handle = MemoryHandle::new(None, Some(*sp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(cpu.pc));
@@ -561,7 +577,7 @@ impl Instruction {
             Self::CMPM { ax, ay, size } => {
                 let src = cpu.memory_handle(AddressPostincr(ay, size)).read(size);
                 let dest = cpu.memory_handle(AddressPostincr(ax, size));
-                let res = dest.read(size).sub(src);
+                let res = dest.read(size).sub(src, false);
                 let ccr = res.1;
                 ccr.set(cpu);
             }
@@ -576,14 +592,11 @@ impl Instruction {
                     dest = cpu.memory_handle(AddressPredecr(rx, size));
                 }
                 let x = cpu.ccr(CCR::X);
-                let operand = match src.read(size) {
-                    OpResult::Byte(op) => OpResult::Byte((op.wrapping_add(x as u8) & 0xff) as u8),
-                    OpResult::Word(op) => OpResult::Word((op.wrapping_add(x as u16) & 0xffff) as u16),
-                    OpResult::Long(op) => OpResult::Long(op.wrapping_add(x as u32)),
-                };
-                let res = dest.read(size).add(operand);
-                let ccr = res.1;
-                dest.write(res.0);
+                let (res, mut ccr) = dest.read(size).add(src.read(size), x);
+                if let Some(true) = ccr.z {
+                    ccr.z = None;
+                }
+                dest.write(res);
                 ccr.set(cpu);
             }
             Self::SUBX { rx, ry, rm, size } => {
@@ -597,41 +610,26 @@ impl Instruction {
                     dest = cpu.memory_handle(AddressPredecr(rx, size));
                 }
                 let x = cpu.ccr(CCR::X);
-                let operand = match src.read(size) {
-                    OpResult::Byte(op) => OpResult::Byte((op.wrapping_sub(x as u8) & 0xff) as u8),
-                    OpResult::Word(op) => OpResult::Word((op.wrapping_sub(x as u16) & 0xffff) as u16),
-                    OpResult::Long(op) => OpResult::Long(op.wrapping_sub(x as u32)),
-                };
-                let res = dest.read(size).sub(operand);
-                let ccr = res.1;
-                dest.write(res.0);
+                let (res, mut ccr) = dest.read(size).sub(src.read(size), x);
+                if let Some(true) = ccr.z {
+                    ccr.z = None;
+                }
+                dest.write(res);
                 ccr.set(cpu);
             }
             Self::ADDA { register, opmode, mode } => {
                 let size = Size::from_opcode(opmode / 4 + 1);
                 let operand = cpu.memory_handle(mode).read(size);
-                let mut reg = cpu.ar(register).as_ref().borrow_mut();
-                match operand {
-                    OpResult::Word(w) => {
-                        let addr = w as i16 as i32;
-                        *reg = (*reg as i32 + addr) as u32;
-                    }
-                    OpResult::Long(l) => *reg = (*reg as i32 + l as i32) as u32,
-                    OpResult::Byte(_) => {}
-                }
+                let reg_handle = cpu.memory_handle(AddressDirect(register));
+                let (res, _) = OpResult::Long(operand.sign_extend() as u32).add(reg_handle.read(Long), false);
+                reg_handle.write(res);
             }
             Self::SUBA { register, opmode, mode } => {
                 let size = Size::from_opcode(opmode / 4 + 1);
                 let operand = cpu.memory_handle(mode).read(size);
-                let mut reg = cpu.ar(register).as_ref().borrow_mut();
-                match operand {
-                    OpResult::Word(w) => {
-                        let addr = w as i16 as i32;
-                        *reg = (*reg as i32 - addr) as u32;
-                    }
-                    OpResult::Long(l) => *reg = (*reg as i32 - l as i32) as u32,
-                    OpResult::Byte(_) => {}
-                }
+                let reg_handle = cpu.memory_handle(AddressDirect(register));
+                let (res, _) = reg_handle.read(Long).sub(OpResult::Long(operand.sign_extend() as u32), false);
+                reg_handle.write(res);
             }
             Self::CMPA { register, opmode, mode } => {
                 let size = Size::from_opcode(opmode / 4 + 1);
@@ -639,7 +637,7 @@ impl Instruction {
                 let ophandle = cpu.memory_handle(mode);
                 let ar = arhandle.read(Long);
                 let op = ophandle.read(size).sign_extend() as u32;
-                let res = ar.sub(OpResult::Long(op));
+                let res = ar.sub(OpResult::Long(op), false);
                 let ccr = res.1;
                 ccr.set(cpu);
             }
@@ -713,8 +711,8 @@ impl Instruction {
             Self::MULS { register, mode } => {
                 let src = cpu.memory_handle(mode);
                 let dest = cpu.memory_handle(DataDirect(register));
-                let factor1 = src.read(Word).inner() as i32;
-                let factor2 = dest.read(Word).inner() as i32;
+                let factor1 = src.read(Word).sign_extend();
+                let factor2 = dest.read(Word).sign_extend();
                 let res = factor1.overflowing_mul(factor2);
                 let mut ccr = CCRFlags::new();
                 ccr.n = Some(res.0 < 0);
@@ -743,9 +741,9 @@ impl Instruction {
                 let dest = cpu.memory_handle(mode);
                 let operand = PackedBCD::from(dest.read(Byte));
                 let (result, carry) = PackedBCD(0).sub(operand, cpu.ccr(CCR::X));
-                dest.write(result.pack());
+                dest.write(result);
                 ccr.c = Some(carry);
-                if result.value() != 0 {
+                if result.inner() != 0 {
                     ccr.z = Some(false)
                 };
                 ccr.set(cpu);
@@ -832,7 +830,7 @@ impl Instruction {
                 let (src, dest) = match opmode {
                     8 => (cpu.memory_handle(DataDirect(rx)), cpu.memory_handle(DataDirect(ry))),
                     9 => (cpu.memory_handle(AddressDirect(rx)), cpu.memory_handle(AddressDirect(ry))),
-                    10 => (cpu.memory_handle(DataDirect(rx)), cpu.memory_handle(AddressDirect(ry))),
+                    17 => (cpu.memory_handle(DataDirect(rx)), cpu.memory_handle(AddressDirect(ry))),
                     _ => panic!("Invalid opmode!"),
                 };
                 let srcval = src.read(Long);
@@ -857,29 +855,43 @@ impl Instruction {
             Self::MOVEA { register, size, mode } => match size {
                 Long => {
                     let src = cpu.memory_handle(mode).read(Long).inner();
-                    let mut dest = cpu.ar(register).as_ref().borrow_mut();
+                    let _reg = cpu.ar(register);
+                    let mut dest = _reg.as_ref().borrow_mut();
                     *dest = src;
                 }
                 Word => {
                     let src = cpu.memory_handle(mode).read(Word).inner() as i16;
-                    let mut dest = cpu.ar(register).as_ref().borrow_mut();
+                    let _reg = cpu.ar(register);
+                    let mut dest = _reg.as_ref().borrow_mut();
                     *dest = src as u32;
                 }
                 _ => panic!("Invalid operand size!"),
             },
             Self::ADDQ { data, size, mode } => {
                 let handle = cpu.memory_handle(mode);
-                let operand = handle.read(size);
-                let (res, ccr) = operand.add(size.from(data));
-                handle.write(res);
-                ccr.set(cpu);
+                if !mode.is_address_register() {
+                    let operand = handle.read(size);
+                    let (res, ccr) = operand.add(size.from(data), false);
+                    handle.write(res);
+                    ccr.set(cpu);
+                } else {
+                    let operand = handle.read(Long);
+                    let (res, _) = operand.add(OpResult::Long(data as u32), false);
+                    handle.write(res);
+                }
             }
             Self::SUBQ { data, size, mode } => {
                 let handle = cpu.memory_handle(mode);
-                let operand = handle.read(size);
-                let (res, ccr) = operand.add(size.from(data));
-                handle.write(res);
-                ccr.set(cpu);
+                if !mode.is_address_register() {
+                    let operand = handle.read(size);
+                    let (res, ccr) = operand.sub(size.from(data), false);
+                    handle.write(res);
+                    ccr.set(cpu);
+                } else {
+                    let operand = handle.read(Long);
+                    let (res, _) = operand.sub(OpResult::Long(data as u32), false);
+                    handle.write(res);
+                }
             }
             Self::BCC { condition, displacement } => {
                 if condition.evaluate(cpu) {
@@ -891,7 +903,7 @@ impl Instruction {
                 let ophandle = cpu.memory_handle(mode);
                 let dr = drhandle.read(opmode.size());
                 let op = ophandle.read(opmode.size());
-                let res = dr.add(op);
+                let res = dr.add(op, false);
                 let ccr = res.1;
                 let result = res.0;
                 opmode.write(drhandle, ophandle, result);
@@ -913,8 +925,7 @@ impl Instruction {
                 let ophandle = cpu.memory_handle(mode);
                 let dr = drhandle.read(opmode.size());
                 let op = ophandle.read(opmode.size());
-                // println!("{}, {}", dr, op);
-                let res = dr.sub(op);
+                let res = dr.sub(op, false);
                 let ccr = res.1;
                 ccr.set(cpu);
             }
@@ -945,7 +956,10 @@ impl Instruction {
                 let ophandle = cpu.memory_handle(mode);
                 let dr = drhandle.read(opmode.size());
                 let op = ophandle.read(opmode.size());
-                let res = dr.sub(op);
+                let res = match opmode {
+                    OpMode::MemoryToRegister(_) => dr.sub(op, false),
+                    OpMode::RegisterToMemory(_) => op.sub(dr, false),
+                };
                 let ccr = res.1;
                 let result = res.0;
                 opmode.write(drhandle, ophandle, result);
@@ -1340,10 +1354,10 @@ fn rolr(handle: MemoryHandle, size: Size, shift_count: u32, dr: usize, cpu: &mut
             }
             handle.write(OpResult::Word(value));
             ccr.z = Some(value == 0);
-            ccr.n = Some((value as i8) < 0);
+            ccr.n = Some((value as i16) < 0);
             ccr.c = if shift_count != 0 {
                 if dr == 0 {
-                    Some(get_bit(value as usize, 7))
+                    Some(get_bit(value as usize, 15))
                 } else {
                     Some(get_bit(value as usize, 0))
                 }
@@ -1361,10 +1375,10 @@ fn rolr(handle: MemoryHandle, size: Size, shift_count: u32, dr: usize, cpu: &mut
             }
             handle.write(OpResult::Long(value));
             ccr.z = Some(value == 0);
-            ccr.n = Some((value as i8) < 0);
+            ccr.n = Some((value as i32) < 0);
             ccr.c = if shift_count != 0 {
                 if dr == 0 {
-                    Some(get_bit(value as usize, 7))
+                    Some(get_bit(value as usize, 31))
                 } else {
                     Some(get_bit(value as usize, 0))
                 }
@@ -1383,18 +1397,18 @@ fn roxlr(handle: MemoryHandle, size: Size, shift_count: usize, dr: usize, cpu: &
     let d: isize = if dr == 0 { 1 } else { -1 };
     let mut result = 0;
     for j in 0..bitsize {
-        let r_j: isize = (j as isize + d * (shift_count as isize)) % (bitsize as isize);
+        let r_j: isize = ((j as isize + d * (shift_count as isize)) % (bitsize as isize) + (bitsize as isize)) % (bitsize as isize);
         set_bit(&mut result, j, get_bit(value, r_j as usize));
     }
     let mut ccr = CCRFlags::new();
     if shift_count != 0 {
-        ccr.x = Some(get_bit(result, bitsize));
-        ccr.v = Some(get_bit(result, bitsize));
+        ccr.x = Some(get_bit(result, bitsize - 1));
+        ccr.c = Some(get_bit(result, bitsize - 1));
     } else {
-        ccr.v = Some(cpu.ccr(CCR::X));
+        ccr.c = Some(cpu.ccr(CCR::X));
     }
     ccr.z = Some(result == 0);
-    ccr.n = Some(get_bit(result, bitsize - 1));
+    ccr.n = Some(get_bit(result, bitsize - 2));
     ccr.v = Some(false);
     handle.write(size.from(result));
     ccr.set(cpu);
@@ -1402,7 +1416,11 @@ fn roxlr(handle: MemoryHandle, size: Size, shift_count: usize, dr: usize, cpu: &
 
 fn shift_count(ir: usize, count: usize, cpu: &CPU) -> usize {
     if ir == 0 {
-        (((count as isize - 1) % 8) + 1) as usize
+        if count != 0 {
+            count % 8
+        } else {
+            8
+        }
     } else {
         (*cpu.dr[count].as_ref().borrow() % 64) as usize
     }
