@@ -6,11 +6,11 @@ import argparse
 TGTMAP = {"lib": 0, "tests": 1}
 BUILDCOMMANDS = {
     "build": {
-        1: ["cargo", "build"],
+        1: ["cargo", "build", "--release"],
         0: ["vasmm68k_mot", "-L", "tests/opcode_tests.lst", "-Fbin", "-o", "tests/opcode_tests.bin", "tests/opcode_tests.asm"],
     },
     "run": {
-        1: ["cargo", "run", "--"],
+        1: ["cargo", "run", "--release", "--"],
         0: ['cargo', 'test', '--test', 'tests', '--'],
     },
 }

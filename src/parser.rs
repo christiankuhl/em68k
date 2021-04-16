@@ -615,7 +615,8 @@ pub fn parse_instruction(opcode: u16, cpu: &mut CPU) -> Option<Instruction> {
         _ => {}
     }
     match split_instruction(opcode, vec![4, 12]).as_slice() {
-        [0xa, _] => return Some(ILLEGAL),
+        [0xa, _] => return Some(TRAP { vector: 10 } ),
+        [0xf, _] => return Some(TRAP { vector: 11 } ),
         _ => {}
     }
     None    
