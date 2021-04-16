@@ -1130,19 +1130,19 @@ impl Instruction {
             }
             Self::SCC { condition, mode } => format!("s{} {}", condition, mode),
             Self::ASLRREG { register, count, size, dr, ir } => {
-                let shift_mode = shift_mode_asm(ir, count);
+                let shift_mode = shift_mode_asm(ir, count, cpu);
                 format!("as{}.{} {},d{}", if dr == 0 { "r" } else { "l" }, size, shift_mode, register)
             }
             Self::LSLRREG { register, count, size, dr, ir } => {
-                let shift_mode = shift_mode_asm(ir, count);
+                let shift_mode = shift_mode_asm(ir, count, cpu);
                 format!("ls{}.{} {},d{}", if dr == 0 { "r" } else { "l" }, size, shift_mode, register)
             }
             Self::ROXLR { register, count, size, dr, ir } => {
-                let shift_mode = shift_mode_asm(ir, count);
+                let shift_mode = shift_mode_asm(ir, count, cpu);
                 format!("rox{}.{} {},d{}", if dr == 0 { "r" } else { "l" }, size, shift_mode, register)
             }
             Self::ROLR { register, count, size, dr, ir } => {
-                let shift_mode = shift_mode_asm(ir, count);
+                let shift_mode = shift_mode_asm(ir, count, cpu);
                 format!("ro{}.{} {},d{}", if dr == 0 { "r" } else { "l" }, size, shift_mode, register)
             }
             Self::MOVEQ { register, data } => format!("moveq #${:02x},d{}", data, register),
@@ -1235,87 +1235,85 @@ fn change_bit(mode: EAMode, register: Option<usize>, extword: Option<u16>, cpu: 
 }
 }
 
-// FIXME: Make this more elegant
 fn aslr(handle: MemoryHandle, size: Size, shift_count: usize, dr: usize, cpu: &mut CPU) {
     let bitsize = 8 * size as usize;
     let mut ccr = CCRFlags::new();
-    let mut value = handle.read(size).inner() as i32;
-    let msb = get_bit(value as usize, bitsize - 1);
-    let mut new_msb;
-    let mut lsb;
-    let mut msb_changed = false;
-    if dr == 0 {
-        for _ in 0..shift_count {
-            new_msb = get_bit(value as usize, bitsize - 1);
-            lsb = get_bit(value as usize, 0);
-            value = value >> 1;
-            ccr.c = Some(lsb);
-            ccr.x = Some(lsb);
-            if new_msb != msb {
-                msb_changed = true;
-            }
-        }
+    let mut value = handle.read(size).sign_extend() as isize;
+    let orig_value = value;
+    let mut msb;
+    let msb_changed;
+    let xb;
+    if dr == 1 {
+        let sc_or_len = shift_count.min(bitsize - 1);
+        let mask = (1 << (sc_or_len + 1)) - 1;
+        let section = ((value as usize) >> (bitsize - sc_or_len - 1)) & mask;
+        msb_changed = (section != 0) && (section != mask);
+        xb = if bitsize >= shift_count {
+            get_bit(value as usize, bitsize - shift_count)
+        } else {
+            false
+        };
+        value = value.overflowing_shl(shift_count as u32).0;
+        msb = (value  & (1 << (bitsize - 1))) != 0;
     } else {
-        for _ in 0..shift_count {
-            new_msb = get_bit(value as usize, bitsize - 1);
-            value = value << 1;
-            ccr.c = Some(new_msb);
-            ccr.x = Some(new_msb);
-            if new_msb != msb {
-                msb_changed = true;
-            }
-        }
+        msb = value < 0;
+        xb = if bitsize >= shift_count && shift_count > 0 {
+            get_bit(value as usize, shift_count - 1)
+        } else {
+            msb
+        };
+        value = value.overflowing_shr(shift_count as u32).0;
+        msb = (value  & (1 << (bitsize - 1))) != 0;
+        msb_changed = false;
     }
-    match size {
-        Size::Byte => handle.write(OpResult::Word((value & 0xff) as u16)),
-        Size::Word => handle.write(OpResult::Word((value & 0xffff) as u16)),
-        Size::Long => handle.write(OpResult::Long(value as u32)),
+    println!("{:032b}, shift_count={}, {}, res={:032b}", orig_value, shift_count, if dr==0 {"right"} else {"left"}, value);
+    handle.write(size.from(value as usize));
+    ccr.z = Some((value & ((1 << bitsize) - 1)) == 0);
+    ccr.n = Some(msb);
+    if shift_count != 0 {
+        ccr.x = Some(xb);
+        ccr.c = Some(xb);
+    } else {
+        ccr.c = Some(false);
     }
-    ccr.z = Some(value == 0);
-    ccr.n = Some(value < 0);
     ccr.v = Some(msb_changed);
+    println!("{:?}", ccr);
     ccr.set(cpu);
 }
 
-// FIXME: Make this more elegant
 fn lslr(handle: MemoryHandle, size: Size, shift_count: usize, dr: usize, cpu: &mut CPU) {
     let bitsize = 8 * size as usize;
     let mut ccr = CCRFlags::new();
-    let mut value = handle.read(size).inner() as u32;
-    let msb = get_bit(value as usize, bitsize - 1);
-    let mut new_msb;
-    let mut lsb;
-    let mut msb_changed = false;
-    if dr == 0 {
-        for _ in 0..shift_count {
-            new_msb = get_bit(value as usize, bitsize - 1);
-            lsb = get_bit(value as usize, 0);
-            value = value >> 1;
-            ccr.c = Some(lsb);
-            ccr.x = Some(lsb);
-            if new_msb != msb {
-                msb_changed = true;
-            }
-        }
+    let mut value = handle.read(size).inner() as usize;
+    let msb;
+    let xb;
+    if dr == 1 {
+        xb = if bitsize >= shift_count {
+            get_bit(value, bitsize - shift_count)
+        } else {
+            false
+        };
+        value = value.overflowing_shl(shift_count as u32).0;
+        msb = get_bit(value, bitsize - 1);
     } else {
-        for _ in 0..shift_count {
-            new_msb = get_bit(value as usize, bitsize - 1);
-            value = value << 1;
-            ccr.c = Some(new_msb);
-            ccr.x = Some(new_msb);
-            if new_msb != msb {
-                msb_changed = true;
-            }
-        }
+        xb = if bitsize >= shift_count && shift_count > 0 {
+            get_bit(value, shift_count - 1)
+        } else {
+            false
+        };
+        value = value.overflowing_shr(shift_count as u32).0;
+        msb = get_bit(value, bitsize - 1);
     }
-    match size {
-        Size::Byte => handle.write(OpResult::Word((value & 0xff) as u16)),
-        Size::Word => handle.write(OpResult::Word((value & 0xffff) as u16)),
-        Size::Long => handle.write(OpResult::Long(value)),
-    }
-    ccr.z = Some(value == 0);
+    handle.write(size.from(value));
+    ccr.z = Some(value & ((1 << bitsize) - 1) == 0);
     ccr.n = Some(msb);
-    ccr.v = Some(msb_changed);
+    if shift_count != 0 {
+        ccr.x = Some(xb);
+        ccr.c = Some(xb);
+    } else {
+        ccr.c = Some(false);
+    }
+    ccr.v = Some(false);
     ccr.set(cpu);
 }
 
@@ -1407,7 +1405,7 @@ fn roxlr(handle: MemoryHandle, size: Size, shift_count: usize, dr: usize, cpu: &
     } else {
         ccr.c = Some(cpu.ccr(CCR::X));
     }
-    ccr.z = Some(result == 0);
+    ccr.z = Some(result & ((1 << (bitsize - 1)) - 1) == 0);
     ccr.n = Some(get_bit(result, bitsize - 2));
     ccr.v = Some(false);
     handle.write(size.from(result));
@@ -1417,7 +1415,7 @@ fn roxlr(handle: MemoryHandle, size: Size, shift_count: usize, dr: usize, cpu: &
 fn shift_count(ir: usize, count: usize, cpu: &CPU) -> usize {
     if ir == 0 {
         if count != 0 {
-            count % 8
+            count
         } else {
             8
         }
@@ -1426,9 +1424,9 @@ fn shift_count(ir: usize, count: usize, cpu: &CPU) -> usize {
     }
 }
 
-fn shift_mode_asm(ir: usize, count: usize) -> String {
+fn shift_mode_asm(ir: usize, count: usize, cpu: &CPU) -> String {
     if ir == 0 {
-        format!("{}", ((count as isize - 1) % 8) + 1)
+        format!("{}", shift_count(ir, count, cpu))
     } else {
         format!("d{}", count)
     }

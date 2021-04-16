@@ -119,7 +119,6 @@ fn main() {
 // 0x34
 
 // fail em68k
-// Test 0x3a: ROX<L/R> failed
 // Test 0x3b: AS<L/R> failed
 // Test 0x3c: LS<L/R> failed
 
@@ -132,6 +131,5 @@ fn main() {
 // 0x29
 
 // Bugs
-// Test 0x3a: ROX<L/R> failed
 // Test 0x3b: AS<L/R> failed
 // Test 0x3c: LS<L/R> failed
