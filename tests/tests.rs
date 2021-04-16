@@ -11,10 +11,10 @@ use termion::{clear, color, cursor};
 const BASE_ADDRESS: usize = 0xffffff00;
 const TESTS: [&str; 61] = ["ORI_TO_CCR", "ORI_TO_SR", "EORI_TO_CCR", "EORI_TO_SR", "ANDI_TO_CCR", "ANDI_TO_SR", "BTST",
                             "BCHG", "BCLR", "BSET", "MOVEP", "BOOL_I", "BSR", "CMP_I", "ADD_I", "SUB_I", "MOVE", "MOVE_FLAGS",
-                            "EXT", "SWAP", "LEA/PEA", "TAS", "TST", "LINK", "MOVE_USP", "CHK", "NEGS", "CLR", "MOVEM", "ABCD",
-                            "SBCD", "NBCD", "TRAPV", "RTR", "BCC", "DBCC", "SCC", "ADDQ", "SUBQ", "MOVEQ", "DIVU", "DIVS",      
-                            "OR", "AND", "EOR", "CMP", "CMPA", "CMPM", "ADD", "SUB", "ADDA", "SUBA", "ADDX", "SUBX", "MULU",
-                            "MULS", "EXG", "RO<L/R>", "ROX<L/R>", "AS<L/R>", "LS<L/R>",];
+                            "EXT", "SWAP", "LEA/PEA", "TAS", "TST", "LINK", "MOVE_USP", "CHK", "NEGS", "CLR", "MOVEM", "TRAPV", 
+                            "RTR", "BCC", "DBCC", "SCC", "ADDQ", "SUBQ", "MOVEQ", "DIVU", "DIVS", "OR", "AND", "EOR", "CMP", 
+                            "CMPA", "CMPM", "ADD", "SUB", "ADDA", "SUBA", "ADDX", "SUBX", "MULU", "MULS", "EXG", "RO<L/R>", 
+                            "ROX<L/R>", "AS<L/R>", "LS<L/R>", "ABCD", "SBCD", "NBCD", ];
 
 struct TestDevice {
     tests: HashMap<usize, (String, u32)>,
@@ -73,20 +73,24 @@ impl fmt::Display for TestDevice {
             result.push_str(&format!("{c}{n}Currently running: {t}\n", 
                 t = TESTS[current + 1], 
                 c = cursor::Goto(1, 3),
-                n = color::Fg(color::Reset)))
+                n = color::Fg(color::Reset)
+            ))
         } else {
-            result.push_str(&format!("{c}{n}Opcode tests complete: {p}/{t} passed\n", 
+            result.push_str(&format!("{c}{n}Opcode tests complete: {p}/{t} passed{s}\n", 
                 p = TESTS.len() - failed_tests.len(), 
                 t = TESTS.len(), 
                 c = cursor::Goto(1, 3),
-                n = color::Fg(color::Reset)))
+                n = color::Fg(color::Reset),
+                s = if failed_tests.len() == 0 {" ;-)"} else {""},
+            ))
         }
         for (j, testname, status) in failed_tests.drain(..) {
             result.push_str(&format!("\n{n}Test 0x{j:02x}: {t} {s}", 
                 n = color::Fg(color::Reset),
                 t = testname, 
                 j = j, 
-                s = status));
+                s = status
+            ));
         }
         write!(f, "{c}{tl}{res}\n", res=result, c=clear::All, tl=cursor::Goto(1, 1))
     }
@@ -114,22 +118,5 @@ fn main() {
 
 // fail easy68k:
 // 0x11
-// 0x28
-// 0x29
 // 0x34
 
-// fail em68k
-// Test 0x3b: AS<L/R> failed
-// Test 0x3c: LS<L/R> failed
-
-// wrong tests(?)
-// Test 0x34: ADDX failed
-
-// Reexamine
-// 0x11
-// 0x28
-// 0x29
-
-// Bugs
-// Test 0x3b: AS<L/R> failed
-// Test 0x3c: LS<L/R> failed

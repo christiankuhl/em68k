@@ -7,7 +7,7 @@ TGTMAP = {"lib": 0, "tests": 1}
 BUILDCOMMANDS = {
     "build": {
         1: ["cargo", "build", "--release"],
-        0: ["vasmm68k_mot", "-L", "tests/opcode_tests.lst", "-Fbin", "-o", "tests/opcode_tests.bin", "tests/opcode_tests.asm"],
+        0: ["vasmm68k_mot", "-L", "tests/opcode_tests.lst", "-Fbin", "-no-opt", "-o", "tests/opcode_tests.bin", "tests/opcode_tests.asm"],
     },
     "run": {
         1: ["cargo", "run", "--release", "--"],

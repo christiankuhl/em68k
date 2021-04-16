@@ -660,9 +660,6 @@ impl Instruction {
                 let divisor = src.read(Word).inner() as i32;
                 let mut ccr = CCRFlags::new();
                 ccr.c = Some(false);
-                ccr.v = Some(false);
-                ccr.z = Some(dividend == 0);
-                ccr.n = Some(dividend.signum() * divisor.signum() < 0);
                 if divisor == 0 {
                     let trap = Self::TRAP { vector: 4 }; // FIXME: Right trap vector
                     ccr.set(cpu);
@@ -674,6 +671,9 @@ impl Instruction {
                     ccr.set(cpu);
                     return Signal::Ok
                 }
+                ccr.z = Some(res.0 == 0);
+                ccr.v = Some(false);
+                ccr.n = Some((res.0 & 0x8000) > 0);
                 let rem = (dividend % divisor) * dividend.signum();
                 dest.write(OpResult::Long(((rem as u32) << 16) + (res.0 as u32 & 0xffff)));
                 ccr.set(cpu);
@@ -685,20 +685,20 @@ impl Instruction {
                 let divisor = src.read(Word).inner() as u32;
                 let mut ccr = CCRFlags::new();
                 ccr.c = Some(false);
-                ccr.v = Some(false);
-                ccr.z = Some(dividend == 0);
                 if divisor == 0 {
                     let trap = Self::TRAP { vector: 5 };
                     ccr.set(cpu);
                     return trap.execute(cpu);
                 }
                 let res = dividend.overflowing_div(divisor);
-                if res.1 || res.0 > 0xffff {
+                if res.0 > 0xffff {
                     ccr.v = Some(true);
                     ccr.set(cpu);
                     return Signal::Ok
                 }
-                ccr.n = Some((res.0 as i16) < 0);
+                ccr.z = Some(res.0 == 0);
+                ccr.v = Some(false);
+                ccr.n = Some((res.0 & 0x8000) > 0);
                 let rem = dividend % divisor;
                 let result = OpResult::Long(((rem as u32) << 16) + (res.0 as u32 & 0xffff));
                 dest.write(result);
@@ -1239,7 +1239,6 @@ fn aslr(handle: MemoryHandle, size: Size, shift_count: usize, dr: usize, cpu: &m
     let bitsize = 8 * size as usize;
     let mut ccr = CCRFlags::new();
     let mut value = handle.read(size).sign_extend() as isize;
-    let orig_value = value;
     let mut msb;
     let msb_changed;
     let xb;
@@ -1266,7 +1265,6 @@ fn aslr(handle: MemoryHandle, size: Size, shift_count: usize, dr: usize, cpu: &m
         msb = (value  & (1 << (bitsize - 1))) != 0;
         msb_changed = false;
     }
-    println!("{:032b}, shift_count={}, {}, res={:032b}", orig_value, shift_count, if dr==0 {"right"} else {"left"}, value);
     handle.write(size.from(value as usize));
     ccr.z = Some((value & ((1 << bitsize) - 1)) == 0);
     ccr.n = Some(msb);
@@ -1277,7 +1275,6 @@ fn aslr(handle: MemoryHandle, size: Size, shift_count: usize, dr: usize, cpu: &m
         ccr.c = Some(false);
     }
     ccr.v = Some(msb_changed);
-    println!("{:?}", ccr);
     ccr.set(cpu);
 }
 
@@ -1317,7 +1314,6 @@ fn lslr(handle: MemoryHandle, size: Size, shift_count: usize, dr: usize, cpu: &m
     ccr.set(cpu);
 }
 
-// FIXME: Make this more elegant
 fn rolr(handle: MemoryHandle, size: Size, shift_count: u32, dr: usize, cpu: &mut CPU) {
     let mut ccr = CCRFlags::new();
     ccr.v = Some(false);

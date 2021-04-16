@@ -92,9 +92,6 @@ EXCEPTION_7:
    jsr op_NEGS
    jsr op_CLR
    jsr op_MOVEM
-   ;jsr op_ABCD
-   ;jsr op_SBCD
-   ;jsr op_NBCD
    jsr op_TRAPV
    jsr op_RTR
    jsr op_BCC
@@ -111,8 +108,8 @@ EXCEPTION_7:
    jsr op_CMP
    jsr op_CMPA
    jsr op_CMPM
-   jsr op_ADD ;#FIXME: Flags
-   jsr op_SUB ;#FIXME: Flags
+   jsr op_ADD
+   jsr op_SUB
    jsr op_ADDA
    jsr op_SUBA
    jsr op_ADDX
@@ -124,6 +121,9 @@ EXCEPTION_7:
    jsr op_ROXx
    jsr op_SHIFTS2
    jsr op_SHIFTS
+   jsr op_ABCD
+   jsr op_SBCD
+   jsr op_NBCD
 
    jmp ALL_DONE
 
@@ -2590,11 +2590,11 @@ MOVE2:      move.b  $00010105,7(a0,d1.w)    ; BYTE
             move.l #$00010100,d1
             move.l #$8899aabb,d2
             move.l #$00000002,d3
-            move.l #$00000000,d4
-            move.l #$00000000,d5
-            move.l #$00000000,d6
-            move.l #$00000000,d7         
-            move.l #$00000000,a0
+            moveq #$00,d4
+            moveq #$00,d5
+            moveq #$00,d6
+            moveq #$00,d7         
+            suba.l a0,a0
             move.l #$00010100,a1
             
     ; x(An,AL) --> x.L
@@ -2660,7 +2660,7 @@ MOVE3:      move.l  $00010104,6(a0,d1.w)    ; LONG
             move.l  MOVE3(pc,d3),$0100 ; LONG  
             beq MOVE_FAIL;                       ; Check Z Flag  beq/bne
             bmi MOVE_FAIL;                       ; Check N Flag  bmi/bpl
-            cmpi.l #$67426b40,8+MOVE3           
+            cmpi.l #$67000058,8+MOVE3           
             bne MOVE_FAIL;                       ; Check Z Flag  beq/bne
                     
     ; #x -->    n(An,AL)
@@ -3975,307 +3975,6 @@ MOVEM_FAIL:
     movea #TESTSTATUS,a0
     move.b #$2,$1c(a0)
     rts
-
-;-----------------------------------------------------------
-;-----------------------------------------------------------
-; OPCODE : ABCD
-;-----------------------------------------------------------
-;-----------------------------------------------------------
-op_ABCD: 
-    
-    ; Test with X Flag CLEARED
-                move.l #$00000110,a0 ; Address pointer-X
-                move.l #$00000120,a1 ; Address pointer-Y
-                move.l #$00000000,d0 ; BCD byte-X
-                move.l #$00000000,d1 ; BCD byte-Y
-                move.l #$00000000,d2
-                move.l #$00000000,d3 ; Cumulative -(An) BCD results
-                move.l #$00000000,d4 ; Cumulative number of times C was set
-                move.l #$00000000,d5 ; Cumulative Register BCD results
-                move.l #$00000099,d6 ; Inner loop counter
-                move.l #$00000099,d7 ; Outer loop counter
-
-ABCD_OUTER1:    move.l d7,d0
-ABCD_INNER1:    move.l d6,d1
-                andi.b #$EF,CCR     ; Clear X Flag
-                move.l #$00000110,a0 ; Address pointer-X
-                move.l #$00000120,a1 ; Address pointer-Y
-                move.b d0,-1(a0)
-                move.b d1,-1(a1)
-                
-                abcd d0,d1
-                bcc ABCD_NO_C1          ; Check C Flag  bcc/bcs 0
-                add.l #1,d4
-ABCD_NO_C1:     add.l d1,d5
-                
-                abcd -(a0),-(a1)
-                bcc ABCD_NO_C2          ; Check C Flag  bcc/bcs 0
-                add.l #1,d4
-ABCD_NO_C2:     add.b (a1),d3
-
-
-                dbf d6,ABCD_INNER1
-                move.l #$00000099,d6
-                dbf d7,ABCD_OUTER1
-                cmpi.l #$00005AFC,d4  ; Check the cumulative results
-                bne ABCD_FAIL;                 
-                cmpi.l #$001C9A34,d5
-                bne ABCD_FAIL;                
-                cmpi.l #$00000034,d3
-                bne ABCD_FAIL;                
-
-    ; Test with X Flag SET
-                move.l #$00000110,a0 ; Address pointer-X
-                move.l #$00000120,a1 ; Address pointer-Y
-                move.l #$00000000,d0 ; BCD byte-X
-                move.l #$00000000,d1 ; BCD byte-Y
-                move.l #$00000000,d2
-                move.l #$00000000,d3 ; Cumulative -(An) BCD results
-                move.l #$00000000,d4 ; Cumulative number of times C was set
-                move.l #$00000000,d5 ; Cumulative Register BCD results
-                move.l #$00000099,d6 ; Inner loop counter
-                move.l #$00000099,d7 ; Outer loop counter
-
-ABCD_OUTER2:    move.l d7,d0
-ABCD_INNER2:    move.l d6,d1
-                ori.b #$10,CCR      ; Set X Flag
-                move.l #$00000110,a0 ; Address pointer-X
-                move.l #$00000120,a1 ; Address pointer-Y
-                move.b d0,-1(a0)
-                move.b d1,-1(a1)
-                
-                abcd d0,d1
-                bcc ABCD_NO_C3          ; Check C Flag  bcc/bcs 0
-                add.l #1,d4
-ABCD_NO_C3:     add.l d1,d5
-                
-                abcd -(a0),-(a1)
-                bcc ABCD_NO_C4          ; Check C Flag  bcc/bcs 0
-                add.l #1,d4
-ABCD_NO_C4:     add.b (a1),d3
-
-
-                dbf d6,ABCD_INNER2
-                move.l #$00000099,d6
-                dbf d7,ABCD_OUTER2
-                cmpi.l #$00005B60,d4  ; Check the cumulative results
-                bne ABCD_FAIL;                 
-                cmpi.l #$001CCFC8,d5
-                bne ABCD_FAIL;                
-                cmpi.l #$00000034,d3
-                bne ABCD_FAIL;                
-
-            ; Quick check of Z Flag
-                move.b #$00,d0 
-                move.b #$00,d1 
-                move #$00,CCR              ; Set Z flag to 0
-                abcd d1,d0                  ; Should NOT set Z Flag to 1
-                beq ABCD_FAIL;                       ; Check Z Flag  beq/bne
-                
-                move.b #$01,d0 
-                move.b #$00,d1 
-                move #$04,CCR              ; Set Z flag to 0
-                abcd d1,d0                  ; Should NOT set Z Flag to 1
-                beq ABCD_FAIL;                       ; Check Z Flag  beq/bne
-                
-                movea #TESTSTATUS,a0
-                move.b #$1,$1d(a0)
-                rts   
-
-ABCD_FAIL:
-    movea #TESTSTATUS,a0
-    move.b #$2,$1d(a0)
-    rts
-
-;-----------------------------------------------------------
-;-----------------------------------------------------------
-; OPCODE : SBCD
-;-----------------------------------------------------------
-;-----------------------------------------------------------
-op_SBCD: 
-
-    ; Test with X Flag CLEARED
-                move.l #$00000110,a0 ; Address pointer-X
-                move.l #$00000120,a1 ; Address pointer-Y
-                move.l #$00000000,d0 ; BCD byte-X
-                move.l #$00000000,d1 ; BCD byte-Y
-                move.l #$00000000,d2
-                move.l #$00000000,d3 ; Cumulative -(An) BCD results
-                move.l #$00000000,d4 ; Cumulative number of times C was set
-                move.l #$00000000,d5 ; Cumulative Register BCD results
-                move.l #$00000099,d6 ; Inner loop counter
-                move.l #$00000099,d7 ; Outer loop counter
-
-SBCD_OUTER1:    move.l d7,d0
-SBCD_INNER1:    move.l d6,d1
-                andi.b #$EF,CCR     ; Clear X Flag
-                move.l #$00000110,a0 ; Address pointer-X
-                move.l #$00000120,a1 ; Address pointer-Y
-                move.b d0,-1(a0)
-                move.b d1,-1(a1)
-                
-                sbcd d0,d1
-                bcc SBCD_NO_C1          ; Check C Flag  bcc/bcs 0
-                add.l #1,d4
-SBCD_NO_C1:     add.l d1,d5
-                
-                sbcd -(a0),-(a1)
-                bcc SBCD_NO_C2          ; Check C Flag  bcc/bcs 0
-                add.l #1,d4
-SBCD_NO_C2:     add.b (a1),d3
-
-
-                dbf d6,SBCD_INNER1
-                move.l #$00000099,d6
-                dbf d7,SBCD_OUTER1
-                cmpi.l #$00005C0A,d4  ; Check the cumulative results
-                bne SBCD_FAIL;                 
-                cmpi.l #$001C459E,d5
-                bne SBCD_FAIL;                
-                cmpi.l #$0000009E,d3
-                bne SBCD_FAIL;                
-
-    ; Test with X Flag SET
-                move.l #$00000110,a0 ; Address pointer-X
-                move.l #$00000120,a1 ; Address pointer-Y
-                move.l #$00000000,d0 ; BCD byte-X
-                move.l #$00000000,d1 ; BCD byte-Y
-                move.l #$00000000,d2
-                move.l #$00000000,d3 ; Cumulative -(An) BCD results
-                move.l #$00000000,d4 ; Cumulative number of times C was set
-                move.l #$00000000,d5 ; Cumulative Register BCD results
-                move.l #$00000099,d6 ; Inner loop counter
-                move.l #$00000099,d7 ; Outer loop counter
-
-SBCD_OUTER2:    move.l d7,d0
-SBCD_INNER2:    move.l d6,d1
-                ori.b #$10,CCR      ; Set X Flag
-                move.l #$00000110,a0 ; Address pointer-X
-                move.l #$00000120,a1 ; Address pointer-Y
-                move.b d0,-1(a0)
-                move.b d1,-1(a1)
-                
-                sbcd d0,d1
-                bcc SBCD_NO_C3          ; Check C Flag  bcc/bcs 0
-                add.l #1,d4
-SBCD_NO_C3:     add.l d1,d5
-                
-                sbcd -(a0),-(a1)
-                bcc SBCD_NO_C4          ; Check C Flag  bcc/bcs 0
-                add.l #1,d4
-SBCD_NO_C4:     add.b (a1),d3
-
-                dbf d6,SBCD_INNER2
-                move.l #$00000099,d6
-                dbf d7,SBCD_OUTER2
-                cmpi.l #$00005CA4,d4  ; Check the cumulative results
-                bne SBCD_FAIL;                 
-                cmpi.l #$001C5C66,d5
-                bne SBCD_FAIL;                
-                cmpi.l #$0000009E,d3
-                bne SBCD_FAIL;                
-
-
-            ; Quick check of Z Flag
-                move.b #$00,d0 
-                move.b #$00,d1 
-                move #$00,CCR              ; Set Z flag to 0
-                sbcd d1,d0                  ; Should NOT set Z Flag to 1
-                beq SBCD_FAIL;                       ; Check Z Flag  beq/bne
-
-                move.b #$01,d0 
-                move.b #$00,d1 
-                move #$04,CCR              ; Set Z flag to 0
-                sbcd d1,d0                  ; Should NOT set Z Flag to 1
-                beq SBCD_FAIL;                       ; Check Z Flag  beq/bne
-
-                movea #TESTSTATUS,a0
-                move.b #$1,$1e(a0)
-                rts
-
-SBCD_FAIL:
-    movea #TESTSTATUS,a0
-    move.b #$2,$1e(a0)
-    rts  
-;-----------------------------------------------------------
-;-----------------------------------------------------------
-; OPCODE : NBCD
-;-----------------------------------------------------------
-;-----------------------------------------------------------
-op_NBCD: 
-    
-       ; NBCD to a  Register
-       
-                move.l #$00000000,d0 ; BCD byte
-                move.l #$00000000,d1 
-                move.l #$00000000,d2
-                move.l #$00000000,d3 ; Cumulative number of times Z was set
-                move.l #$00000000,d4 ; Cumulative number of times C was set
-                move.l #$00000000,d5 ; Cumulative BCD results
-                move.l #$00000099,d6
-                move.l #$00000099,d7 ; Loop counter
-
-NBCD_LOOP:      move.l d7,d0
-                move #$04,CCR        ; Set Z flag to 0
-
-                nbcd d0
-                
-                bcc NBCD_NO_C         ; Check C Flag 
-                add.l #1,d4
-NBCD_NO_C:      bne NBCD_NO_Z         ; Check Z Flag 
-                add.l #1,d3
-NBCD_NO_Z:      add.l d0,d5         ; Add results into d5
-
-                dbf d7,NBCD_LOOP
-                
-                cmpi.l #$00000001,d3  ; Check the cumulative results
-                bne NBCD_FAIL;                 
-                cmpi.l #$00000099,d4
-                bne NBCD_FAIL;                
-                cmpi.l #$00002E3B,d5
-                bne NBCD_FAIL;     
-           
-
-       ; NBCD to a memory location
-       
-                move.l #$00000000,d0 ; BCD byte
-                move.l #$00000000,d1 
-                move.l #$00000000,d2
-                move.l #$00000000,d3 ; Cumulative number of times Z was set
-                move.l #$00000000,d4 ; Cumulative number of times C was set
-                move.l #$00000000,d5 ; Cumulative BCD results
-                move.l #$00000099,d6
-                move.l #$00000099,d7 ; Loop counter
-
-NBCD_LOOP1:     move.b d7,$00000100
-                move #$04,CCR        ; Set Z flag to 0
-
-                nbcd $00000100
-                move.b $00000100,d0
-                
-                bcc NBCD_NO_C1        ; Check C Flag 
-                add.l #1,d4
-NBCD_NO_C1:     bne NBCD_NO_Z1        ; Check Z Flag 
-                add.l #1,d3
-NBCD_NO_Z1:     add.l d0,d5         ; Add results into d5
-
-                dbf d7,NBCD_LOOP1
-                
-                cmpi.l #$00000001,d3  ; Check the cumulative results
-                bne NBCD_FAIL;                 
-                cmpi.l #$00000000,d4
-                bne NBCD_FAIL;                
-                cmpi.l #$00002E3B,d5
-                bne NBCD_FAIL;     
-           
-                movea #TESTSTATUS,a0
-                move.b #$1,$1f(a0)
-                rts   
-
-NBCD_FAIL:
-    movea #TESTSTATUS,a0
-    move.b #$2,$1f(a0)
-    rts
                
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -4299,12 +3998,12 @@ op_TRAPV:
                bne TRAPV_FAIL;       
 
                movea #TESTSTATUS,a0
-               move.b #$1,$20(a0)
+               move.b #$1,$1d(a0)
                rts   
 
 TRAPV_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$20(a0)
+    move.b #$2,$1d(a0)
     rts
                
 ;-----------------------------------------------------------
@@ -4326,7 +4025,7 @@ RTR_DONE:       move SR,d0
                 bne RTR_FAIL;
                 
                 movea #TESTSTATUS,a0
-                move.b #$1,$21(a0)
+                move.b #$1,$1e(a0)
                 rts   
 
    
@@ -4335,7 +4034,7 @@ BSR_FAR2:       move.l #$44444444,d4
 
 RTR_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$1,$21(a0)
+    move.b #$1,$1e(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -4402,13 +4101,13 @@ BCC13:          move #$06,CCR
                
 
 BCC14:          movea #TESTSTATUS,a0
-                move.b #$1,$22(a0)
+                move.b #$1,$1f(a0)
                 rts
   
 
 BCC_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$22(a0)
+    move.b #$2,$1f(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -4434,12 +4133,12 @@ DBCC_LOOP2:     addi.b #$1,d1
                 bne DBCC_FAIL;       
             
                 movea #TESTSTATUS,a0
-                move.b #$1,$23(a0)
+                move.b #$1,$20(a0)
                 rts
                 
 DBCC_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$23(a0)
+    move.b #$2,$20(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -4459,12 +4158,12 @@ op_SCC:         move #$01,CCR
                 bne SCC_FAIL;       
 
                 movea #TESTSTATUS,a0
-                move.b #$1,$24(a0)
+                move.b #$1,$21(a0)
                 rts
                 
 SCC_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$24(a0)
+    move.b #$2,$21(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -4551,12 +4250,12 @@ ADDQ_LOOP3:     addq.l #1,d5
                 bcs ADDQ_FAIL;
 
                 movea #TESTSTATUS,a0
-                move.b #$1,$25(a0)
+                move.b #$1,$22(a0)
                 rts
         
 ADDQ_FAIL: 
     movea #TESTSTATUS,a0
-    move.b #$2,$25(a0)
+    move.b #$2,$22(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -4643,12 +4342,12 @@ SUBQ_LOOP3:     subq.l #1,d5
                 bcs SUBQ_FAIL;
 
                 movea #TESTSTATUS,a0
-                move.b #$1,$26(a0)
+                move.b #$1,$23(a0)
                 rts
 
 SUBQ_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$26(a0)  
+    move.b #$2,$23(a0)  
     rts
 
 ;-----------------------------------------------------------
@@ -4672,12 +4371,12 @@ op_MOVEQ:
                 bne MOVEQ_FAIL;
 
                 movea #TESTSTATUS,a0
-                move.b #$1,$27(a0)
+                move.b #$1,$24(a0)
                 rts
 
 MOVEQ_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$27(a0)
+    move.b #$2,$24(a0)
     rts
    
 ;-----------------------------------------------------------
@@ -4698,7 +4397,7 @@ op_DIVU:
                 move.l #$0000001E,d7       ; Outer loop counter
 
 
-DIVU_OUTER1:    divu d1,d0               ; !! Easy68K C not always cleared
+DIVU_OUTER1:    divu d1,d0               
                 move SR,d3      
                 andi.l #$0C,d3            ; Isolate flags 
                 add.l d3,d5               ; Copy flag results into accumulator
@@ -4715,16 +4414,16 @@ DIVU_OUTER1:    divu d1,d0               ; !! Easy68K C not always cleared
                 cmpi.l #$92FEDB89,d4      ; Check the data results
                 bne DIVU_FAIL;                
                      
-                cmpi.l #$000000d8,d5      ; Check the Flag results #FIXME: was 0x110
+                cmpi.l #$00000110,d5      ; Check the Flag results
                 bne DIVU_FAIL;                 
           
                 movea #TESTSTATUS,a0
-                move.b #$1,$28(a0)
+                move.b #$1,$25(a0)
                 rts
                 
 DIVU_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$28(a0)
+    move.b #$2,$25(a0)
     rts
    
 ;-----------------------------------------------------------
@@ -4745,7 +4444,7 @@ op_DIVS:
                 move.l #$0000001E,d7       ; Outer loop counter
 
 
-DIVS_OUTER1:    divs d1,d0               ; !! Easy68K C not always cleared
+DIVS_OUTER1:    divs d1,d0              
                 move SR,d3      
                 andi.l #$0C,d3            ; Isolate flags 
                 add.l d3,d5               ; Copy flag results into accumulator
@@ -4762,16 +4461,16 @@ DIVS_OUTER1:    divs d1,d0               ; !! Easy68K C not always cleared
                 cmpi.l #$4EC5D057,d4      ; Check the data results
                 bne DIVS_FAIL;                
 
-                cmpi.l #$00000078,d5      ; Check the Flag results #FIXME: was 0x38
+                cmpi.l #$00000038,d5      ; Check the Flag results
                 bne DIVS_FAIL;                 
           
                 movea #TESTSTATUS,a0
-                move.b #$1,$29(a0)
+                move.b #$1,$26(a0)
                 rts
        
 DIVS_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$29(a0)
+    move.b #$2,$26(a0)
     rts
    
 ;-----------------------------------------------------------
@@ -4888,12 +4587,12 @@ OR_OUTER2:
                 bne OR_FAIL;                 
                    
                 movea #TESTSTATUS,a0
-                move.b #$1,$2a(a0)
+                move.b #$1,$27(a0)
                 rts
                 
 OR_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$2a(a0)
+    move.b #$2,$27(a0)
     rts 
 
 ;-----------------------------------------------------------
@@ -5010,12 +4709,12 @@ AND_OUTER2:
                 bne AND_FAIL;                 
                    
                 movea #TESTSTATUS,a0
-                move.b #$1,$2b(a0) 
+                move.b #$1,$28(a0) 
                 rts
                 
 AND_FAIL: 
     movea #TESTSTATUS,a0
-    move.b #$2,$2b(a0)    
+    move.b #$2,$28(a0)    
     rts     
 
 ;-----------------------------------------------------------
@@ -5079,12 +4778,12 @@ EOR_OUTER2:
                 bne EOR_FAIL;                 
                    
                 movea #TESTSTATUS,a0
-                move.b #$1,$2c(a0)
+                move.b #$1,$29(a0)
                 rts
                 
 EOR_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$2c(a0)
+    move.b #$2,$29(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -5149,12 +4848,12 @@ CMP_OUTER1:
                 bne CMP_FAIL;                
                    
                 movea #TESTSTATUS,a0
-                move.b #$1,$2d(a0)
+                move.b #$1,$2a(a0)
                 rts
 
 CMP_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$2d(a0)
+    move.b #$2,$2a(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -5212,12 +4911,12 @@ CMPA_OUTER1:
                 bne CMPA_FAIL;                
                        
                 movea #TESTSTATUS,a0
-                move.b #$1,$2e(a0)
+                move.b #$1,$2b(a0)
                 rts
 
 CMPA_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$2e(a0)
+    move.b #$2,$2b(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -5285,12 +4984,12 @@ CMPM_LOOP3:     cmpm.l (a0)+,(a1)+
                 bne CMPM_FAIL;                
         
                 movea #TESTSTATUS,a0
-                move.b #$1,$2f(a0)
+                move.b #$1,$2c(a0)
                 rts
 
 CMPM_FAIL: 
     movea #TESTSTATUS,a0
-    move.b #$2,$2f(a0)
+    move.b #$2,$2c(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -5406,12 +5105,12 @@ ADD_OUTER2:
                 bne ADD_FAIL;                 
                 
                 movea #TESTSTATUS,a0
-                move.b #$1,$30(a0)
+                move.b #$1,$2d(a0)
                 rts
 
 ADD_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$30(a0)
+    move.b #$2,$2d(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -5526,12 +5225,12 @@ SUB_OUTER2:
                 bne SUB_FAIL;                 
 
                 movea #TESTSTATUS,a0
-                move.b #$1,$31(a0)
+                move.b #$1,$2e(a0)
                 rts
 
 SUB_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$31(a0)
+    move.b #$2,$2e(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -5578,12 +5277,12 @@ ADDA_OUTER1:
                 bne ADDA_FAIL;                
               
                 movea #TESTSTATUS,a0
-                move.b #$1,$32(a0)
+                move.b #$1,$2f(a0)
                 rts
 
 ADDA_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$32(a0)
+    move.b #$2,$2f(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -5630,12 +5329,12 @@ SUBA_OUTER1:
                 bne SUBA_FAIL;                
               
                 movea #TESTSTATUS,a0
-                move.b #$1,$33(a0)
+                move.b #$1,$30(a0)
                 rts
 
 SUBA_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$33(a0)
+    move.b #$2,$30(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -5756,12 +5455,12 @@ ADDX_LOOP5:     addx.l -(a0),-(a1)
                 bne ADDX_FAIL;                
  
                 movea #TESTSTATUS,a0
-                move.b #$1,$34(a0)
+                move.b #$1,$31(a0)
                 rts
 
 ADDX_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$34(a0)
+    move.b #$2,$31(a0)
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -5881,12 +5580,12 @@ SUBX_LOOP5:     subx.l -(a0),-(a1)
                 bne SUBX_FAIL;                
  
                 movea #TESTSTATUS,a0
-                move.b #$1,$35(a0)
+                move.b #$1,$32(a0)
                 rts
 
 SUBX_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$35(a0)
+    move.b #$2,$32(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -5927,12 +5626,12 @@ MULU_OUTER1:    mulu d1,d0
                 bne MULU_FAIL;                 
           
                 movea #TESTSTATUS,a0
-                move.b #$1,$36(a0)
+                move.b #$1,$33(a0)
                 rts
 
 MULU_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$36(a0)
+    move.b #$2,$33(a0)
     rts            
                 
 ;-----------------------------------------------------------
@@ -5973,12 +5672,12 @@ MULS_OUTER1:    muls d1,d0
                 bne MULS_FAIL;                 
           
                 movea #TESTSTATUS,a0
-                move.b #$1,$37(a0)
+                move.b #$1,$34(a0)
                 rts
                 
 MULS_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$37(a0)
+    move.b #$2,$34(a0)
     rts
                 
 ;-----------------------------------------------------------
@@ -6018,12 +5717,12 @@ op_EXG:
                 bne EXG_FAIL;                 
  
                 movea #TESTSTATUS,a0
-                move.b #$1,$38(a0)
+                move.b #$1,$35(a0)
                 rts
       
 EXG_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$38(a0)
+    move.b #$2,$35(a0)
     rts
 
 ;-----------------------------------------------------------
@@ -6249,12 +5948,12 @@ ROx_LOOP6:
                 bne ROX_FAIL;                 
 
                 movea #TESTSTATUS,a0
-                move.b #$1,$39(a0)
+                move.b #$1,$36(a0)
                 rts
       
 ROX_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$39(a0)
+    move.b #$2,$36(a0)
     rts
                 
 ;-----------------------------------------------------------
@@ -6480,12 +6179,12 @@ ROXx_LOOP6:
                 bne ROXX_FAIL;                 
 
                 movea #TESTSTATUS,a0
-                move.b #$1,$3a(a0)
+                move.b #$1,$37(a0)
                 rts        
 
 ROXX_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$3a(a0)
+    move.b #$2,$37(a0)
     rts
  
                 
@@ -6714,12 +6413,12 @@ SHIFTS_LOOP6:
                 bne SHIFT_FAIL;                 
 
                 movea #TESTSTATUS,a0
-                move.b #$1,$3b(a0)
+                move.b #$1,$38(a0)
                 rts      
         
 SHIFT_FAIL:
     movea #TESTSTATUS,a0
-    move.b #$2,$3b(a0)
+    move.b #$2,$38(a0)
     rts
                 
 ;-----------------------------------------------------------
@@ -6947,10 +6646,312 @@ SHIFTS2_LOOP6:
                 bne LSHIFT_FAIL;                 
 
                 movea #TESTSTATUS,a0
-                move.b #$1,$3c(a0)
+                move.b #$1,$39(a0)
                 rts      
 
 LSHIFT_FAIL:
+    movea #TESTSTATUS,a0
+    move.b #$2,$39(a0)
+    rts
+
+;-----------------------------------------------------------
+;-----------------------------------------------------------
+; OPCODE : ABCD
+;-----------------------------------------------------------
+;-----------------------------------------------------------
+op_ABCD: 
+    
+    ; Test with X Flag CLEARED
+                move.l #$00000110,a0 ; Address pointer-X
+                move.l #$00000120,a1 ; Address pointer-Y
+                move.l #$00000000,d0 ; BCD byte-X
+                move.l #$00000000,d1 ; BCD byte-Y
+                move.l #$00000000,d2
+                move.l #$00000000,d3 ; Cumulative -(An) BCD results
+                move.l #$00000000,d4 ; Cumulative number of times C was set
+                move.l #$00000000,d5 ; Cumulative Register BCD results
+                move.l #$00000099,d6 ; Inner loop counter
+                move.l #$00000099,d7 ; Outer loop counter
+
+ABCD_OUTER1:    move.l d7,d0
+ABCD_INNER1:    move.l d6,d1
+                andi.b #$EF,CCR     ; Clear X Flag
+                move.l #$00000110,a0 ; Address pointer-X
+                move.l #$00000120,a1 ; Address pointer-Y
+                move.b d0,-1(a0)
+                move.b d1,-1(a1)
+                
+                abcd d0,d1
+                bcc ABCD_NO_C1          ; Check C Flag  bcc/bcs 0
+                add.l #1,d4
+ABCD_NO_C1:     add.l d1,d5
+                
+                abcd -(a0),-(a1)
+                bcc ABCD_NO_C2          ; Check C Flag  bcc/bcs 0
+                add.l #1,d4
+ABCD_NO_C2:     add.b (a1),d3
+
+
+                dbf d6,ABCD_INNER1
+                move.l #$00000099,d6
+                dbf d7,ABCD_OUTER1
+                cmpi.l #$00005AFC,d4  ; Check the cumulative results
+                bne ABCD_FAIL;                 
+                cmpi.l #$001C9A34,d5
+                bne ABCD_FAIL;                
+                cmpi.l #$00000034,d3
+                bne ABCD_FAIL;                
+
+    ; Test with X Flag SET
+                move.l #$00000110,a0 ; Address pointer-X
+                move.l #$00000120,a1 ; Address pointer-Y
+                move.l #$00000000,d0 ; BCD byte-X
+                move.l #$00000000,d1 ; BCD byte-Y
+                move.l #$00000000,d2
+                move.l #$00000000,d3 ; Cumulative -(An) BCD results
+                move.l #$00000000,d4 ; Cumulative number of times C was set
+                move.l #$00000000,d5 ; Cumulative Register BCD results
+                move.l #$00000099,d6 ; Inner loop counter
+                move.l #$00000099,d7 ; Outer loop counter
+
+ABCD_OUTER2:    move.l d7,d0
+ABCD_INNER2:    move.l d6,d1
+                ori.b #$10,CCR      ; Set X Flag
+                move.l #$00000110,a0 ; Address pointer-X
+                move.l #$00000120,a1 ; Address pointer-Y
+                move.b d0,-1(a0)
+                move.b d1,-1(a1)
+                
+                abcd d0,d1
+                bcc ABCD_NO_C3          ; Check C Flag  bcc/bcs 0
+                add.l #1,d4
+ABCD_NO_C3:     add.l d1,d5
+                
+                abcd -(a0),-(a1)
+                bcc ABCD_NO_C4          ; Check C Flag  bcc/bcs 0
+                add.l #1,d4
+ABCD_NO_C4:     add.b (a1),d3
+
+
+                dbf d6,ABCD_INNER2
+                move.l #$00000099,d6
+                dbf d7,ABCD_OUTER2
+                cmpi.l #$00005B60,d4  ; Check the cumulative results
+                bne ABCD_FAIL;                 
+                cmpi.l #$001CCFC8,d5
+                bne ABCD_FAIL;                
+                cmpi.l #$00000034,d3
+                bne ABCD_FAIL;                
+
+            ; Quick check of Z Flag
+                move.b #$00,d0 
+                move.b #$00,d1 
+                move #$00,CCR              ; Set Z flag to 0
+                abcd d1,d0                  ; Should NOT set Z Flag to 1
+                beq ABCD_FAIL;                       ; Check Z Flag  beq/bne
+                
+                move.b #$01,d0 
+                move.b #$00,d1 
+                move #$04,CCR              ; Set Z flag to 0
+                abcd d1,d0                  ; Should NOT set Z Flag to 1
+                beq ABCD_FAIL;                       ; Check Z Flag  beq/bne
+                
+                movea #TESTSTATUS,a0
+                move.b #$1,$3a(a0)
+                rts   
+
+ABCD_FAIL:
+    movea #TESTSTATUS,a0
+    move.b #$2,$3a(a0)
+    rts
+
+;-----------------------------------------------------------
+;-----------------------------------------------------------
+; OPCODE : SBCD
+;-----------------------------------------------------------
+;-----------------------------------------------------------
+op_SBCD: 
+
+    ; Test with X Flag CLEARED
+                move.l #$00000110,a0 ; Address pointer-X
+                move.l #$00000120,a1 ; Address pointer-Y
+                move.l #$00000000,d0 ; BCD byte-X
+                move.l #$00000000,d1 ; BCD byte-Y
+                move.l #$00000000,d2
+                move.l #$00000000,d3 ; Cumulative -(An) BCD results
+                move.l #$00000000,d4 ; Cumulative number of times C was set
+                move.l #$00000000,d5 ; Cumulative Register BCD results
+                move.l #$00000099,d6 ; Inner loop counter
+                move.l #$00000099,d7 ; Outer loop counter
+
+SBCD_OUTER1:    move.l d7,d0
+SBCD_INNER1:    move.l d6,d1
+                andi.b #$EF,CCR     ; Clear X Flag
+                move.l #$00000110,a0 ; Address pointer-X
+                move.l #$00000120,a1 ; Address pointer-Y
+                move.b d0,-1(a0)
+                move.b d1,-1(a1)
+                
+                sbcd d0,d1
+                bcc SBCD_NO_C1          ; Check C Flag  bcc/bcs 0
+                add.l #1,d4
+SBCD_NO_C1:     add.l d1,d5
+                
+                sbcd -(a0),-(a1)
+                bcc SBCD_NO_C2          ; Check C Flag  bcc/bcs 0
+                add.l #1,d4
+SBCD_NO_C2:     add.b (a1),d3
+
+
+                dbf d6,SBCD_INNER1
+                move.l #$00000099,d6
+                dbf d7,SBCD_OUTER1
+                cmpi.l #$00005C0A,d4  ; Check the cumulative results
+                bne SBCD_FAIL;                 
+                cmpi.l #$001C459E,d5
+                bne SBCD_FAIL;                
+                cmpi.l #$0000009E,d3
+                bne SBCD_FAIL;                
+
+    ; Test with X Flag SET
+                move.l #$00000110,a0 ; Address pointer-X
+                move.l #$00000120,a1 ; Address pointer-Y
+                move.l #$00000000,d0 ; BCD byte-X
+                move.l #$00000000,d1 ; BCD byte-Y
+                move.l #$00000000,d2
+                move.l #$00000000,d3 ; Cumulative -(An) BCD results
+                move.l #$00000000,d4 ; Cumulative number of times C was set
+                move.l #$00000000,d5 ; Cumulative Register BCD results
+                move.l #$00000099,d6 ; Inner loop counter
+                move.l #$00000099,d7 ; Outer loop counter
+
+SBCD_OUTER2:    move.l d7,d0
+SBCD_INNER2:    move.l d6,d1
+                ori.b #$10,CCR      ; Set X Flag
+                move.l #$00000110,a0 ; Address pointer-X
+                move.l #$00000120,a1 ; Address pointer-Y
+                move.b d0,-1(a0)
+                move.b d1,-1(a1)
+                
+                sbcd d0,d1
+                bcc SBCD_NO_C3          ; Check C Flag  bcc/bcs 0
+                add.l #1,d4
+SBCD_NO_C3:     add.l d1,d5
+                
+                sbcd -(a0),-(a1)
+                bcc SBCD_NO_C4          ; Check C Flag  bcc/bcs 0
+                add.l #1,d4
+SBCD_NO_C4:     add.b (a1),d3
+
+                dbf d6,SBCD_INNER2
+                move.l #$00000099,d6
+                dbf d7,SBCD_OUTER2
+                cmpi.l #$00005CA4,d4  ; Check the cumulative results
+                bne SBCD_FAIL;                 
+                cmpi.l #$001C5C66,d5
+                bne SBCD_FAIL;                
+                cmpi.l #$0000009E,d3
+                bne SBCD_FAIL;                
+
+
+            ; Quick check of Z Flag
+                move.b #$00,d0 
+                move.b #$00,d1 
+                move #$00,CCR              ; Set Z flag to 0
+                sbcd d1,d0                  ; Should NOT set Z Flag to 1
+                beq SBCD_FAIL;                       ; Check Z Flag  beq/bne
+
+                move.b #$01,d0 
+                move.b #$00,d1 
+                move #$04,CCR              ; Set Z flag to 0
+                sbcd d1,d0                  ; Should NOT set Z Flag to 1
+                beq SBCD_FAIL;                       ; Check Z Flag  beq/bne
+
+                movea #TESTSTATUS,a0
+                move.b #$1,$3b(a0)
+                rts
+
+SBCD_FAIL:
+    movea #TESTSTATUS,a0
+    move.b #$2,$3b(a0)
+    rts  
+    
+;-----------------------------------------------------------
+;-----------------------------------------------------------
+; OPCODE : NBCD
+;-----------------------------------------------------------
+;-----------------------------------------------------------
+op_NBCD: 
+    
+       ; NBCD to a  Register
+       
+                move.l #$00000000,d0 ; BCD byte
+                move.l #$00000000,d1 
+                move.l #$00000000,d2
+                move.l #$00000000,d3 ; Cumulative number of times Z was set
+                move.l #$00000000,d4 ; Cumulative number of times C was set
+                move.l #$00000000,d5 ; Cumulative BCD results
+                move.l #$00000099,d6
+                move.l #$00000099,d7 ; Loop counter
+
+NBCD_LOOP:      move.l d7,d0
+                move #$04,CCR        ; Set Z flag to 0
+
+                nbcd d0
+                
+                bcc NBCD_NO_C         ; Check C Flag 
+                add.l #1,d4
+NBCD_NO_C:      bne NBCD_NO_Z         ; Check Z Flag 
+                add.l #1,d3
+NBCD_NO_Z:      add.l d0,d5         ; Add results into d5
+
+                dbf d7,NBCD_LOOP
+                
+                cmpi.l #$00000001,d3  ; Check the cumulative results
+                bne NBCD_FAIL;                 
+                cmpi.l #$00000099,d4
+                bne NBCD_FAIL;                
+                cmpi.l #$00002E3B,d5
+                bne NBCD_FAIL;     
+           
+
+       ; NBCD to a memory location
+       
+                move.l #$00000000,d0 ; BCD byte
+                move.l #$00000000,d1 
+                move.l #$00000000,d2
+                move.l #$00000000,d3 ; Cumulative number of times Z was set
+                move.l #$00000000,d4 ; Cumulative number of times C was set
+                move.l #$00000000,d5 ; Cumulative BCD results
+                move.l #$00000099,d6
+                move.l #$00000099,d7 ; Loop counter
+
+NBCD_LOOP1:     move.b d7,$00000100
+                move #$04,CCR        ; Set Z flag to 0
+
+                nbcd $00000100
+                move.b $00000100,d0
+                
+                bcc NBCD_NO_C1        ; Check C Flag 
+                add.l #1,d4
+NBCD_NO_C1:     bne NBCD_NO_Z1        ; Check Z Flag 
+                add.l #1,d3
+NBCD_NO_Z1:     add.l d0,d5         ; Add results into d5
+
+                dbf d7,NBCD_LOOP1
+                
+                cmpi.l #$00000001,d3  ; Check the cumulative results
+                bne NBCD_FAIL;                 
+                cmpi.l #$00000000,d4
+                bne NBCD_FAIL;                
+                cmpi.l #$00002E3B,d5
+                bne NBCD_FAIL;     
+           
+                movea #TESTSTATUS,a0
+                move.b #$1,$3c(a0)
+                rts   
+
+NBCD_FAIL:
     movea #TESTSTATUS,a0
     move.b #$2,$3c(a0)
     rts

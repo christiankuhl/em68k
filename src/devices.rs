@@ -194,7 +194,7 @@ impl Monitor {
             panic!("{}", e);
         });
         let buffer: Vec<u32> = vec![0; 640 * 400];
-        // window.limit_update_rate(Some(Duration::from_millis(1)));
+        window.limit_update_rate(None);
         Box::new(Monitor { window, buffer, vram_start, ctrl_address, ctrl_register: vec![0; 102], resolution })
     }
 }
@@ -227,7 +227,11 @@ impl Device for Monitor {
                     self.buffer[8 * (address - self.vram_start) + j] = 0x0;
                 }
             }
+            // self.window.update();
             // self.window.update_with_buffer(&self.buffer, 640, 400).expect("Error updating screen!");
+            if !self.window.is_open() {
+                return Signal::Quit
+            }
         } else {
             let rel_addr = address - self.ctrl_address;
             for (j, &b) in result.to_be_bytes().iter().enumerate() {
@@ -473,7 +477,6 @@ impl Device for MultiFunctionPeripheral {
         let rel_addr = address - self.address;
         if rel_addr == 2 {
             self.active_edge = result.inner();
-            println!("{:08b}", self.active_edge);
         }
         for (fromaddr, toaddr) in self.timer_a.memconfig() {
             if rel_addr >= fromaddr && rel_addr < toaddr {
