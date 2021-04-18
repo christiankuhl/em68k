@@ -202,7 +202,7 @@ impl Monitor {
             while window.is_open() {
                 window.update_with_buffer(&read_handle.read().unwrap(), resolution.dimensions().0, resolution.dimensions().1).expect("Error updating screen!");
             }
-            tx.send(Signal::Quit);
+            tx.send(Signal::Quit).unwrap();
         });
         let resolution = Resolution::High;
         Box::new(Monitor { buffer, vram_start, ctrl_address, ctrl_register: vec![0; 102], resolution, signal: rx })
@@ -315,13 +315,13 @@ impl Resolution {
 }
 
 pub struct Floppy {
-    content: Vec<u8>,
+    _content: Vec<u8>,
 }
 
 impl Floppy {
     pub fn new(image: &str) -> Box<Self> {
-        let content = fs::read(image).expect("Disk image does not exist!");
-        Box::new(Self { content })
+        let _content = fs::read(image).expect("Disk image does not exist!");
+        Box::new(Self { _content })
     }
 }
 
@@ -557,10 +557,10 @@ impl Device for InterruptHandler {
     fn memconfig(&self) -> MemoryRange {
         vec![(self.ctrl_register, self.ctrl_register + 22)]
     }
-    fn read(&mut self, address: usize, size: Size) -> OpResult {
+    fn read(&mut self, _address: usize, _size: Size) -> OpResult {
         OpResult::Byte(0)
     }
-    fn write(&mut self, address: usize, result: OpResult) -> Signal {
+    fn write(&mut self, _address: usize, _result: OpResult) -> Signal {
         Signal::Ok
     }
     fn interrupt_request(&mut self) -> Option<IRQ> { None }
@@ -581,10 +581,10 @@ impl Device for MIDIAdapter {
     fn memconfig(&self) -> MemoryRange {
         vec![(self.address, self.address + 4)]
     }
-    fn read(&mut self, address: usize, size: Size) -> OpResult {
+    fn read(&mut self, _address: usize, _size: Size) -> OpResult {
         OpResult::Byte(0)
     }
-    fn write(&mut self, address: usize, result: OpResult) -> Signal {
+    fn write(&mut self, _address: usize, _result: OpResult) -> Signal {
         Signal::Ok
     }
     fn interrupt_request(&mut self) -> Option<IRQ> { None }
@@ -606,8 +606,7 @@ impl Device for Microwire {
     fn memconfig(&self) -> MemoryRange {
         vec![(self.address, self.address + 4)]
     }
-    fn read(&mut self, address: usize, size: Size) -> OpResult {
-        // size.from_be_bytes(&self.data[address - self.address..])
+    fn read(&mut self, _address: usize, size: Size) -> OpResult {
         size.zero()
     }
     fn write(&mut self, address: usize, result: OpResult) -> Signal {
@@ -719,10 +718,10 @@ impl Device for Keyboard {
     fn memconfig(&self) -> MemoryRange {
         vec![(self.address, self.address + 4)]
     }
-    fn read(&mut self, address: usize, size: Size) -> OpResult {
+    fn read(&mut self, _address: usize, _size: Size) -> OpResult {
         OpResult::Byte(0)
     }
-    fn write(&mut self, address: usize, result: OpResult) -> Signal {
+    fn write(&mut self, _address: usize, _result: OpResult) -> Signal {
         Signal::Ok
     }
     fn interrupt_request(&mut self) -> Option<IRQ> { None }
