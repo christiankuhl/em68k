@@ -6,7 +6,7 @@ use minifb::{Window, WindowOptions};
 use std::fs;
 use std::thread;
 use std::time::Duration;
-use std::sync::{mpsc, Arc, atomic::{AtomicU8, Ordering, AtomicBool}};
+use std::sync::{mpsc, Arc, atomic::{AtomicU8, Ordering, AtomicBool}, RwLock};
 
 const CLKFREQ: f64 = 2457600.0;
 
@@ -15,8 +15,6 @@ pub type DeviceList = Vec<(MemoryRange, Box<dyn Device>)>;
 pub enum Signal {
     Ok,
     Quit,
-    Attach(Box<dyn Device>),
-    Detach,
     NoOp,
     Remap,
 }
@@ -46,6 +44,7 @@ pub trait Device: {
     fn read(&mut self, address: usize, size: Size) -> OpResult;
     fn write(&mut self, address: usize, result: OpResult) -> Signal;
     fn interrupt_request(&mut self) -> Option<IRQ>;
+    fn poll(&self) -> Signal;
 }
 
 pub struct Ram {
@@ -73,6 +72,7 @@ impl Device for Ram {
         Signal::Ok
     }
     fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 pub struct Timer {
@@ -170,32 +170,42 @@ impl Device for Timer {
         Signal::Ok
     }
     fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 pub struct Monitor {
-    window: Window,
-    buffer: Vec<u32>,
+    buffer: Arc<RwLock<Vec<u32>>>,
     vram_start: usize,
     ctrl_address: usize,
     ctrl_register: Vec<u8>,
     resolution: Resolution,
+    signal: mpsc::Receiver<Signal>,
 }
 
 impl Monitor {
     pub fn new(vram_start: usize, ctrl_address: usize) -> Box<Monitor> {
         let resolution = Resolution::High;
-        let mut window = Window::new(
-            "Test - ESC to exit",
-            resolution.dimensions().0,
-            resolution.dimensions().1,
-            WindowOptions::default(),
-        )
-        .unwrap_or_else(|e| {
-            panic!("{}", e);
+        let buffer: Arc<RwLock<Vec<u32>>> = Arc::new(RwLock::new(vec![0; 640 * 400]));
+        let read_handle = Arc::clone(&buffer);
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let mut window = Window::new(
+                "Test - ESC to exit",
+                resolution.dimensions().0,
+                resolution.dimensions().1,
+                WindowOptions::default(),
+            )
+            .unwrap_or_else(|e| {
+                panic!("{}", e);
+            });
+            window.limit_update_rate(Some(Duration::from_micros(166000)));
+            while window.is_open() {
+                window.update_with_buffer(&read_handle.read().unwrap(), resolution.dimensions().0, resolution.dimensions().1).expect("Error updating screen!");
+            }
+            tx.send(Signal::Quit);
         });
-        let buffer: Vec<u32> = vec![0; 640 * 400];
-        window.limit_update_rate(None);
-        Box::new(Monitor { window, buffer, vram_start, ctrl_address, ctrl_register: vec![0; 102], resolution })
+        let resolution = Resolution::High;
+        Box::new(Monitor { buffer, vram_start, ctrl_address, ctrl_register: vec![0; 102], resolution, signal: rx })
     }
 }
 
@@ -208,10 +218,11 @@ impl Device for Monitor {
             size.from_be_bytes(&self.ctrl_register[address - self.ctrl_address..])
         } else {
             let mut result = Vec::new();
+            let buffer = self.buffer.read().unwrap();
             for j in 0..size as usize {
                 let mut b: usize = 0;
                 for i in 0..8 {
-                    set_bit(&mut b, i, self.buffer[8 * (address - self.vram_start) + 8 * (size as usize - j - 1) + i] > 0)
+                    set_bit(&mut b, i, buffer[8 * (address - self.vram_start) + 8 * (size as usize - j - 1) + i] > 0)
                 }
                 result.push(b as u8)
             }
@@ -220,17 +231,13 @@ impl Device for Monitor {
     }
     fn write(&mut self, address: usize, result: OpResult) -> Signal {
         if address < self.ctrl_address {
+            let mut buffer = self.buffer.write().unwrap();
             for j in 0..8 {
                 if result.inner() & (1 << (7 - j % 8)) > 0 {
-                    self.buffer[8 * (address - self.vram_start) + j] = 0xffffff;
+                    buffer[8 * (address - self.vram_start) + j] = 0xffffff;
                 } else {
-                    self.buffer[8 * (address - self.vram_start) + j] = 0x0;
+                    buffer[8 * (address - self.vram_start) + j] = 0x0;
                 }
-            }
-            // self.window.update();
-            // self.window.update_with_buffer(&self.buffer, 640, 400).expect("Error updating screen!");
-            if !self.window.is_open() {
-                return Signal::Quit
             }
         } else {
             let rel_addr = address - self.ctrl_address;
@@ -274,6 +281,12 @@ impl Device for Monitor {
         Signal::Ok
     }
     fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { 
+        match self.signal.try_recv() {
+            Ok(signal) => signal,
+            _ => Signal::Ok,
+        }    
+    }
 }
 
 #[derive(Debug)]
@@ -323,6 +336,7 @@ impl Device for Floppy {
         Signal::Ok 
     }
     fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 #[derive(Copy, Clone)]
@@ -385,6 +399,7 @@ impl Device for MMU {
         Signal::Ok
     }
     fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 pub struct SoundGenerator {
@@ -410,6 +425,7 @@ impl Device for SoundGenerator {
         Signal::Ok
     }
     fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 pub struct MultiFunctionPeripheral {
@@ -524,6 +540,7 @@ impl Device for MultiFunctionPeripheral {
         }
         None
     }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 struct InterruptHandler {
@@ -547,6 +564,7 @@ impl Device for InterruptHandler {
         Signal::Ok
     }
     fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 pub struct MIDIAdapter {
@@ -569,7 +587,8 @@ impl Device for MIDIAdapter {
     fn write(&mut self, address: usize, result: OpResult) -> Signal {
         Signal::Ok
     }
-    fn interrupt_request(&mut self) -> Option<IRQ> { None }    
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 pub struct Microwire {
@@ -597,7 +616,8 @@ impl Device for Microwire {
         }
         Signal::Ok
     }
-    fn interrupt_request(&mut self) -> Option<IRQ> { None }    
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 pub struct DMASoundSystem {
@@ -624,7 +644,8 @@ impl Device for DMASoundSystem {
         }
         Signal::Ok
     }
-    fn interrupt_request(&mut self) -> Option<IRQ> { None }    
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 pub struct SystemControlUnit {
@@ -651,7 +672,8 @@ impl Device for SystemControlUnit {
         }
         Signal::Ok
     }
-    fn interrupt_request(&mut self) -> Option<IRQ> { None }    
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 pub struct JoystickPort {
@@ -678,7 +700,8 @@ impl Device for JoystickPort {
         }
         Signal::Ok
     }
-    fn interrupt_request(&mut self) -> Option<IRQ> { None }    
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 
@@ -702,7 +725,8 @@ impl Device for Keyboard {
     fn write(&mut self, address: usize, result: OpResult) -> Signal {
         Signal::Ok
     }
-    fn interrupt_request(&mut self) -> Option<IRQ> { None }    
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 

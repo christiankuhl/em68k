@@ -45,6 +45,7 @@ impl Device for TestDevice {
         Signal::Ok
     }
     fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
 }
 
 impl fmt::Display for TestDevice {

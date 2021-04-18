@@ -51,6 +51,10 @@ impl Emulator {
                     _ => (),
                 };
             }
+            match self.cpu.poll_devices() {
+                Signal::Quit => break,
+                _ => (),
+            }
         }
     }
     fn load(&mut self, progname: &str) {

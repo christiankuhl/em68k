@@ -260,6 +260,9 @@ impl CPU {
             }
         }
     }
+    pub fn poll_devices(&self) -> Signal {
+        self.bus.borrow().poll_devices()
+    }
 }
 
 impl fmt::Display for CPU {
