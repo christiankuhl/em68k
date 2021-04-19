@@ -198,13 +198,15 @@ impl Monitor {
             .unwrap_or_else(|e| {
                 panic!("{}", e);
             });
-            window.limit_update_rate(Some(Duration::from_micros(166000)));
             while window.is_open() {
-                window.update_with_buffer(&read_handle.read().unwrap(), resolution.dimensions().0, resolution.dimensions().1).expect("Error updating screen!");
+                {
+                    let buffer = &read_handle.read().unwrap();
+                    window.update_with_buffer(&buffer, resolution.dimensions().0, resolution.dimensions().1).expect("Error updating screen!");
+                }
+                thread::sleep(Duration::from_micros(166000));
             }
             tx.send(Signal::Quit).unwrap();
         });
-        let resolution = Resolution::High;
         Box::new(Monitor { buffer, vram_start, ctrl_address, ctrl_register: vec![0; 102], resolution, signal: rx })
     }
 }
@@ -289,7 +291,7 @@ impl Device for Monitor {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum Resolution {
     Low = 0,
     Medium = 1,
