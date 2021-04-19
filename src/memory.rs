@@ -130,4 +130,11 @@ impl Bus {
         }
         irqs
     }
+    pub fn poll_devices(&self) -> Signal {
+        let mut signal = Signal::Ok;
+        for (_, device) in &self.devices {
+            signal.add(&device.poll());
+        }
+        signal
+    }
 }

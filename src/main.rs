@@ -4,7 +4,7 @@ use std::env;
 
 fn main() {
     let args: HashSet<String> = env::args().collect();
-    println!("{:?}", args);
+    let debug = args.contains(&String::from("--debug"));
     let mut em = Emulator::new(st1040());
-    em.run("tos/TOS104GE.IMG", args.contains(&String::from("--debug")));
+    em.run("tos/TOS104GE.IMG", debug);
 }
