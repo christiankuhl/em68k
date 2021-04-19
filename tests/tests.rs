@@ -9,6 +9,10 @@ use std::env;
 use termion::{clear, color, cursor};
 
 const BASE_ADDRESS: usize = 0xffffff00;
+
+// Keep below array synchronized with the ordering of the tests in opcode_tests.asm. Some of the tests rely on the precise
+// binary format of the instructions as well as the memory layout of the resulting binary, hence assemble with optimisations
+// turned off entirely.
 const TESTS: [&str; 61] = ["ORI_TO_CCR", "ORI_TO_SR", "EORI_TO_CCR", "EORI_TO_SR", "ANDI_TO_CCR", "ANDI_TO_SR", "BTST",
                             "BCHG", "BCLR", "BSET", "MOVEP", "BOOL_I", "BSR", "CMP_I", "ADD_I", "SUB_I", "MOVE", "MOVE_FLAGS",
                             "EXT", "SWAP", "LEA/PEA", "TAS", "TST", "LINK", "MOVE_USP", "CHK", "NEGS", "CLR", "MOVEM", "TRAPV", 
@@ -113,10 +117,11 @@ fn test_configuration() -> Configuration {
 fn main() {
     let args: HashSet<String> = env::args().collect();
     let mut em = Emulator::new(test_configuration());
+    // em.run("tests/test.bin", args.contains(&String::from("--debug")));
     em.run("tests/opcode_tests.bin", args.contains(&String::from("--debug")));
 }
 
-// fail easy68k:
-// 0x11
-// 0x34
+// TODO: the following tests fail on easy68k; figure out, why
+// 0x11 MOVE_FLAGS
+// 0x34 ADDX
 

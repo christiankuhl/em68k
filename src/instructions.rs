@@ -593,8 +593,8 @@ impl Instruction {
                 }
                 let x = cpu.ccr(CCR::X);
                 let (res, mut ccr) = dest.read(size).add(src.read(size), x);
-                if let Some(true) = ccr.z {
-                    ccr.z = None;
+                if ccr.z != Some(false) {
+                    ccr.z = None
                 }
                 dest.write(res);
                 ccr.set(cpu);
@@ -611,8 +611,8 @@ impl Instruction {
                 }
                 let x = cpu.ccr(CCR::X);
                 let (res, mut ccr) = dest.read(size).sub(src.read(size), x);
-                if let Some(true) = ccr.z {
-                    ccr.z = None;
+                if ccr.z != Some(false) {
+                    ccr.z = None
                 }
                 dest.write(res);
                 ccr.set(cpu);

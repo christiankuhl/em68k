@@ -5325,7 +5325,7 @@ SUBA_OUTER1:
                 move.l #$0000001E,d6       ; Inner loop counter
                 dbf d7,SUBA_OUTER1
                 
-                cmpi.l #$6fecc6d7,d4 * #$E1E36D7A,d4      ; Check the data results
+                cmpi.l #$6fecc6d7,d4       ; Check the data results
                 bne SUBA_FAIL;                
               
                 movea #TESTSTATUS,a0
@@ -5356,6 +5356,7 @@ op_ADDX:
                 move.l #$0000001E,d6       ; Inner loop counter
                 move.l #$0000001E,d7       ; Outer loop counter
                 move.l #$00000100,a0       ; Address for memory EA operations
+                move #$2700,sr             ; Reset flags
 
 
 ADDX_OUTER1:    
@@ -5451,7 +5452,7 @@ ADDX_LOOP5:     addx.l -(a0),-(a1)
 
                 cmpi.l #$00000095,d0      ; Check the flag results
                 bne ADDX_FAIL;                
-                cmpi.l #$c812a67f,d1 *#$C812A682,d1      ; Check the data results 
+                cmpi.l #$C812A682,d1      ; Check the data results 
                 bne ADDX_FAIL;                
  
                 movea #TESTSTATUS,a0
@@ -5461,6 +5462,7 @@ ADDX_LOOP5:     addx.l -(a0),-(a1)
 ADDX_FAIL:
     movea #TESTSTATUS,a0
     move.b #$2,$31(a0)
+    rts
 
 ;-----------------------------------------------------------
 ;-----------------------------------------------------------
@@ -5481,6 +5483,7 @@ op_SUBX:
                 move.l #$0000001E,d6       ; Inner loop counter
                 move.l #$0000001E,d7       ; Outer loop counter
                 move.l #$00000100,a0       ; Address for memory EA operations
+                move #$2700,sr             ; Reset flags
 
 
 SUBX_OUTER1:    
