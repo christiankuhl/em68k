@@ -301,11 +301,15 @@ impl EAMode {
             Self::AddressDisplacement(earegister, displacement) => format!("{:-x}(a{:})", SignedForDisplay(displacement), earegister),
             Self::AddressIndex8Bit(earegister, iregister, displacement, size, scale, da) => {
                 let da_flag = if da == 0 { "d" } else { "a" };
-                format!("({:x}a{:},{:}{:}.{:}*{:})", SignedForDisplay(displacement), earegister, da_flag, iregister, size.as_asm(), 1 << scale)
+                let scale_asm = if scale > 0 { format!("*{}", 1 << scale) } else { "".to_string() };
+                let disp_asm = if displacement != 0 { format!("{:x}", SignedForDisplay(displacement)) } else { "".to_string() };
+                format!("({}a{:},{:}{:}.{:}{})", disp_asm, earegister, da_flag, iregister, size.as_asm(), scale_asm)
             }
             Self::AddressIndexBase(earegister, iregister, displacement, size, scale, da) => {
                 let da_flag = if da == 0 { "d" } else { "a" };
-                format!("({:x}a{:},{:}{:}.{:}*{:})", SignedForDisplay(displacement), earegister, da_flag, iregister, size.as_asm(), 1 << scale)
+                let scale_asm = if scale > 0 { format!("*{}", 1 << scale) } else { "".to_string() };
+                let disp_asm = if displacement != 0 { format!("{:x}", SignedForDisplay(displacement)) } else { "".to_string() };
+                format!("({}a{:},{:}{:}.{:}{})", disp_asm, earegister, da_flag, iregister, size.as_asm(), scale_asm)
             }
             Self::AbsoluteShort(ptr) => format!("({:04x}).w", ptr as u16),
             Self::AbsoluteLong(ptr) => format!("({:08x}).l", ptr as u32),
@@ -313,7 +317,9 @@ impl EAMode {
             Self::Immediate(data) => format!("#{:}", data),
             Self::PCIndex8Bit(register, displacement, size, scale, da, _) => {
                 let da_flag = if da == 0 { "d" } else { "a" };
-                format!("({:x}pc,{:}{:}.{:}*{:})", SignedForDisplay(displacement), da_flag, register, size.as_asm(), 1 << scale) 
+                let scale_asm = if scale > 0 { format!("*{}", 1 << scale) } else { "".to_string() };
+                let disp_asm = if displacement != 0 { format!("{:x}", SignedForDisplay(displacement)) } else { "".to_string() };
+                format!("({}pc,{:}{:}.{:}{})", disp_asm, da_flag, register, size.as_asm(), scale_asm) 
             }
             _ => {
                 println!("{:?}", *self);

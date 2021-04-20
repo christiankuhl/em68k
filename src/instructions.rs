@@ -413,7 +413,7 @@ impl Instruction {
                                 register = _register.as_ref().borrow_mut();
                             }
                             if size == Word {
-                                result = ((src.read(size).inner() & 0xffff) as i16) as u32
+                                result = src.read(size).sign_extend() as u32
                             } else {
                                 result = src.read(size).inner()
                             }

@@ -207,7 +207,7 @@ impl Monitor {
             }
             tx.send(Signal::Quit).unwrap();
         });
-        Box::new(Monitor { buffer, vram_start, ctrl_address, ctrl_register: vec![0; 102], resolution, signal: rx })
+        Box::new(Monitor { buffer, vram_start, ctrl_address, ctrl_register: vec![0; 102], resolution: Resolution::Reserved, signal: rx })
     }
 }
 
@@ -217,6 +217,10 @@ impl Device for Monitor {
     }
     fn read(&mut self, address: usize, size: Size) -> OpResult {
         if address >= self.ctrl_address {
+            let rel_addr = address - self.ctrl_address; 
+            if rel_addr == 0x5f {
+                return size.from(self.resolution as u8)
+            }
             size.from_be_bytes(&self.ctrl_register[address - self.ctrl_address..])
         } else {
             let mut result = Vec::new();
@@ -296,6 +300,7 @@ enum Resolution {
     Low = 0,
     Medium = 1,
     High = 2,
+    Reserved = 3,
 }
 
 impl Resolution {
@@ -312,6 +317,7 @@ impl Resolution {
             Self::Low => (320, 200),
             Self::Medium => (640, 200),
             Self::High => (640, 400),
+            Self::Reserved => unreachable!(),
         }
     }
 }
@@ -461,6 +467,9 @@ impl Device for MultiFunctionPeripheral {
     }
     fn read(&mut self, address: usize, size: Size) -> OpResult {
         let rel_addr = address - self.address;
+        if rel_addr == 0 {
+            return size.zero()
+        }
         if rel_addr == 2 {
             return size.from(self.active_edge)
         }
@@ -721,9 +730,38 @@ impl Device for Keyboard {
         vec![(self.address, self.address + 4)]
     }
     fn read(&mut self, _address: usize, _size: Size) -> OpResult {
-        OpResult::Byte(0)
+        OpResult::Byte(2)
     }
     fn write(&mut self, _address: usize, _result: OpResult) -> Signal {
+        Signal::Ok
+    }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
+}
+
+
+pub struct Blitter {
+    address: usize,
+    raw_data: Vec<u8>,
+}
+
+impl Blitter {
+    pub fn new(address: usize) -> Box<Self> {
+        Box::new(Self { address: address, raw_data: vec![0; 0x3d] })
+    }
+}
+
+impl Device for Blitter {
+    fn memconfig(&self) -> MemoryRange {
+        vec![(self.address, self.address + 0x3d)]
+    }
+    fn read(&mut self, address: usize, size: Size) -> OpResult {
+        size.from_be_bytes(&self.raw_data[address - self.address..])
+    }
+    fn write(&mut self, address: usize, result: OpResult) -> Signal {
+        for (j, &b) in result.to_be_bytes().iter().enumerate() {
+            self.raw_data[address - self.address + j] = b;
+        }
         Signal::Ok
     }
     fn interrupt_request(&mut self) -> Option<IRQ> { None }

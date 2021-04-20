@@ -312,6 +312,7 @@ pub fn st1040() -> Configuration {
     let mut bus = Bus::new();
     bus.attach(Ram::new(0xff8000));
     bus.attach(Monitor::new(0x3f8000, 0xffff8201));
+    bus.attach(Blitter::new(0xffff8a00));
     bus.attach(MMU::new(0xffff8001));
     bus.attach(SoundGenerator::new(0xffff8800));
     bus.attach(MultiFunctionPeripheral::new(0xfffffa01));

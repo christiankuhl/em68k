@@ -118,7 +118,6 @@ fn test_configuration() -> Configuration {
 fn main() {
     let args: HashSet<String> = env::args().collect();
     let mut em = Emulator::new(test_configuration());
-    // em.run("tests/test.bin", args.contains(&String::from("--debug")));
     em.run("tests/opcode_tests.bin", args.contains(&String::from("--debug")));
 }
 
