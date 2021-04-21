@@ -9215,7 +9215,7 @@ F00:5325                       move.l #$0000001E,d6       ; Inner loop counter
 F00:5326                       dbf d7,SUBA_OUTER1
                S06:0000468E:  51 CF FF DC
 F00:5327                       
-F00:5328                       cmpi.l #$6fecc6d7,d4 * #$E1E36D7A,d4      ; Check the data results
+F00:5328                       cmpi.l #$6fecc6d7,d4       ; Check the data results
                S06:00004692:  0C 84 6F EC C6 D7
 F00:5329                       bne SUBA_FAIL;                
                S06:00004698:  66 00 00 0E

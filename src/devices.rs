@@ -190,7 +190,7 @@ impl Monitor {
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             let mut window = Window::new(
-                "Test - ESC to exit",
+                "MyAtari ;-)",
                 resolution.dimensions().0,
                 resolution.dimensions().1,
                 WindowOptions::default(),
@@ -207,7 +207,7 @@ impl Monitor {
             }
             tx.send(Signal::Quit).unwrap();
         });
-        Box::new(Monitor { buffer, vram_start, ctrl_address, ctrl_register: vec![0; 102], resolution: Resolution::Reserved, signal: rx })
+        Box::new(Monitor { buffer, vram_start, ctrl_address, ctrl_register: vec![0; 102], resolution: Resolution::High, signal: rx })
     }
 }
 
@@ -468,7 +468,7 @@ impl Device for MultiFunctionPeripheral {
     fn read(&mut self, address: usize, size: Size) -> OpResult {
         let rel_addr = address - self.address;
         if rel_addr == 0 {
-            return size.zero()
+            return size.from(0xa1)
         }
         if rel_addr == 2 {
             return size.from(self.active_edge)

@@ -419,7 +419,6 @@ pub struct Debugger {
     code_running: bool,
     last_cmd: DebugCommand,
     variables: HashSet<u32>,
-    call_graph: (String, usize),
 }
 
 #[derive(PartialEq, Clone)]
@@ -441,7 +440,6 @@ impl Debugger {
             code_running: false,
             last_cmd: DebugCommand::Step,
             variables: HashSet::new(),
-            call_graph: (String::new(), 0),
         })
     }
     fn set_breakpoint(&mut self, breakpoint: &Option<String>, cpu: &CPU, delete: bool) {
@@ -509,14 +507,12 @@ impl Debugger {
     }
     pub fn update(&mut self, cpu: &mut CPU) -> Signal {
         if !self.code_running || self.disassembly.breakpoints.contains(&cpu.jmp) {
-            self.update_call_graph(cpu);
             self.code_running = false;
             self.disassembly.update(cpu);
             self.draw_user_interface(cpu);
             let cmd = self.get_command();
             match &cmd {
                 DebugCommand::Quit => {
-                    // std::fs::write("callgraph", &self.call_graph.0);
                     Signal::Quit
                 },
                 DebugCommand::SetBreakpoint(b) => {
@@ -555,28 +551,7 @@ impl Debugger {
                 }
             }
         } else {
-            self.update_call_graph(cpu);
             Signal::Ok
-        }
-    }
-    fn update_call_graph(&mut self, cpu: &CPU) {
-        if self.call_graph.0.is_empty() {
-            self.call_graph.0.push_str(&format!("{:08x}", cpu.pc))
-        }
-        match cpu.nxt {
-            Instruction::BSR { displacement: _ } => {
-                let mut newline = "\n".to_string();
-                self.call_graph.1 += 1;
-                for _ in 0..self.call_graph.1 {
-                    newline.push_str("    ")
-                }
-                newline.push_str(&cpu.nxt.as_asm(cpu));
-                self.call_graph.0.push_str(&newline);
-            }
-            Instruction::RTS => {
-                self.call_graph.1 -= 1;
-            }
-            _ => ()
         }
     }
 }

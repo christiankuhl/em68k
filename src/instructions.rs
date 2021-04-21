@@ -3,6 +3,7 @@ use crate::fields::{EAMode::*, Size::*};
 use crate::memory::MemoryHandle;
 use crate::processor::{get_bit, set_bit, CCRFlags, CCR, CPU};
 use crate::devices::Signal;
+use std::cell::RefCell;
 
 #[derive(Copy, Clone)]
 pub enum Instruction {
@@ -363,7 +364,11 @@ impl Instruction {
                 }
             }
             Self::MOVEM { size, dr, mode, register_mask } => {
-                // FIXME: Handle address register for specific architecture differences
+                let (ar, orig_val) = match mode {
+                    AddressPostincr(reg, _) => (reg, RefCell::new(*cpu.ar(reg).borrow())), 
+                    AddressPredecr(reg, _) => (reg, RefCell::new(*cpu.ar(reg).borrow())),
+                    _ => (16, RefCell::new(0))
+                };
                 if dr == 0 {
                     let mut tgt = cpu.memory_handle(mode);
                     let mut result;
@@ -373,8 +378,12 @@ impl Instruction {
                             let register;
                             if mode == AddressPredecr(0, Byte) {
                                 if j < 8 {
-                                    _register = cpu.ar(7 - j);
-                                    register = _register.as_ref().borrow();
+                                    if 7 - j != ar {
+                                        _register = cpu.ar(7 - j);
+                                        register = _register.as_ref().borrow();
+                                    } else {
+                                        register = orig_val.borrow();
+                                    }
                                 } else {
                                     register = cpu.dr[15 - j].as_ref().borrow();
                                 }
@@ -386,11 +395,7 @@ impl Instruction {
                                     register = _register.as_ref().borrow();
                                 }
                             }
-                            if size == Word {
-                                result = OpResult::Word(*register as u16)
-                            } else {
-                                result = OpResult::Long(*register);
-                            }
+                            result = size.from(*register);
                             tgt.write(result);
                             if mode == AddressPredecr(0, Byte) {
                                 tgt.offset(-(size as isize));
@@ -398,6 +403,11 @@ impl Instruction {
                                 tgt.offset(size as isize);
                             }
                         }
+                    }
+                    if ar < 8 {
+                        let _aregister = cpu.ar(ar);
+                        let mut aregister = _aregister.as_ref().borrow_mut();
+                        *aregister = aregister.wrapping_sub(size as u32 * (register_mask.count_ones() - 1));
                     }
                 } else if dr == 1 {
                     let mut src = cpu.memory_handle(mode);
@@ -420,6 +430,11 @@ impl Instruction {
                             *register = result;
                             src.offset(size as isize);
                         }
+                    }
+                    if ar < 8 {
+                        let _aregister = cpu.ar(ar);
+                        let mut aregister = _aregister.as_ref().borrow_mut();
+                        *aregister = aregister.wrapping_add(size as u32 * (register_mask.count_ones() - 1));
                     }
                 }
             }
@@ -869,27 +884,29 @@ impl Instruction {
             },
             Self::ADDQ { data, size, mode } => {
                 let handle = cpu.memory_handle(mode);
+                let mod_data = if data == 0 { 8 } else { data };
                 if !mode.is_address_register() {
                     let operand = handle.read(size);
-                    let (res, ccr) = operand.add(size.from(data), false);
+                    let (res, ccr) = operand.add(size.from(mod_data), false);
                     handle.write(res);
                     ccr.set(cpu);
                 } else {
                     let operand = handle.read(Long);
-                    let (res, _) = operand.add(OpResult::Long(data as u32), false);
+                    let (res, _) = operand.add(OpResult::Long(mod_data as u32), false);
                     handle.write(res);
                 }
             }
             Self::SUBQ { data, size, mode } => {
                 let handle = cpu.memory_handle(mode);
+                let mod_data = if data == 0 { 8 } else { data };
                 if !mode.is_address_register() {
                     let operand = handle.read(size);
-                    let (res, ccr) = operand.sub(size.from(data), false);
+                    let (res, ccr) = operand.sub(size.from(mod_data), false);
                     handle.write(res);
                     ccr.set(cpu);
                 } else {
                     let operand = handle.read(Long);
-                    let (res, _) = operand.sub(OpResult::Long(data as u32), false);
+                    let (res, _) = operand.sub(OpResult::Long(mod_data as u32), false);
                     handle.write(res);
                 }
             }

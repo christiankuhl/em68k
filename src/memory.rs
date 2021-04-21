@@ -10,7 +10,7 @@ pub type RegPtr = Rc<RefCell<u32>>;
 pub type MemoryRange = Vec<(usize, usize)>;
 
 pub struct MemoryHandle {
-    reg: Option<RegPtr>,
+    pub reg: Option<RegPtr>,
     ptr: Option<usize>,
     bus: BusPtr,
     imm: Option<OpResult>,
