@@ -300,7 +300,6 @@ enum Resolution {
     Low = 0,
     Medium = 1,
     High = 2,
-    Reserved = 3,
 }
 
 impl Resolution {
@@ -317,25 +316,25 @@ impl Resolution {
             Self::Low => (320, 200),
             Self::Medium => (640, 200),
             Self::High => (640, 400),
-            Self::Reserved => unreachable!(),
         }
     }
 }
 
 pub struct Floppy {
+    address: usize,
     _content: Vec<u8>,
 }
 
 impl Floppy {
-    pub fn new(image: &str) -> Box<Self> {
+    pub fn new(address: usize, image: &str) -> Box<Self> {
         let _content = fs::read(image).expect("Disk image does not exist!");
-        Box::new(Self { _content })
+        Box::new(Self { address, _content })
     }
 }
 
 impl Device for Floppy {
     fn memconfig(&self) -> MemoryRange {
-        vec![(0, 0)]
+        vec![(self.address, self.address + 14)]
     }
     fn read(&mut self, _address: usize, _size: Size) -> OpResult {
         OpResult::Byte(0)
@@ -397,7 +396,7 @@ impl MMU {
 
 impl Device for MMU {
     fn memconfig(&self) -> MemoryRange {
-        vec![(self.address, self.address + 1)]
+        vec![(self.address, self.address + 8)]
     }
     fn read(&mut self, _address: usize, _size: Size) -> OpResult {
         self.data
@@ -754,6 +753,34 @@ impl Blitter {
 impl Device for Blitter {
     fn memconfig(&self) -> MemoryRange {
         vec![(self.address, self.address + 0x3d)]
+    }
+    fn read(&mut self, address: usize, size: Size) -> OpResult {
+        size.from_be_bytes(&self.raw_data[address - self.address..])
+    }
+    fn write(&mut self, address: usize, result: OpResult) -> Signal {
+        for (j, &b) in result.to_be_bytes().iter().enumerate() {
+            self.raw_data[address - self.address + j] = b;
+        }
+        Signal::Ok
+    }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
+}
+
+pub struct RealTimeClock {
+    address: usize,
+    raw_data: Vec<u8>,
+}
+
+impl RealTimeClock {
+    pub fn new(address: usize) -> Box<Self> {
+        Box::new(Self { address: address, raw_data: vec![0; 0x20] })
+    }
+}
+
+impl Device for RealTimeClock {
+    fn memconfig(&self) -> MemoryRange {
+        vec![(self.address, self.address + 0x20)]
     }
     fn read(&mut self, address: usize, size: Size) -> OpResult {
         size.from_be_bytes(&self.raw_data[address - self.address..])

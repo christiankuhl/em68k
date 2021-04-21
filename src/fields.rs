@@ -239,7 +239,7 @@ impl EAMode {
                         }
                     }
                 } else {
-                    panic!("Invalid extension word!")
+                    panic!(format!("Invalid extension word! {}", cpu))
                 }
             }
             7 => {

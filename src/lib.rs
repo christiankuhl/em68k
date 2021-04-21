@@ -38,7 +38,9 @@ impl Emulator {
                     Signal::Quit => break,
                     _ => {}
                 }
-                self.cpu.serve_interrupt_requests();
+                if !debug {
+                    self.cpu.serve_interrupt_requests();
+                }
             } else {
                 idle = false;
             }

@@ -28,6 +28,7 @@ pub struct CPU {
     pub prev: u32,              // Last program counter (debugger)
     pub jmp: u32,               // Last jump location (debugger)
     pub irq: VecDeque<IRQ>,     // Interrupt request queue
+    pub irp: bool,              // Interrupt in process (debugger)
 }
 
 #[derive(Copy, Clone)]
@@ -81,7 +82,7 @@ impl CCRFlags {
 
 impl CPU {
     pub fn new(pc: u32, sr: u32, dr: [RegPtr; 8], ar: [RegPtr; 8], ssp: RegPtr, bus: BusPtr) -> Self {
-        CPU { pc, sr, dr, ar, ssp, bus, nxt: Instruction::NOP, prev: 0, jmp: 0, irq: VecDeque::new() }
+        CPU { pc, sr, dr, ar, ssp, bus, nxt: Instruction::NOP, prev: 0, jmp: 0, irq: VecDeque::new(), irp: false }
     }
     pub fn clock_cycle(&mut self) -> Signal {
         let next_instruction = self.nxt;
@@ -251,10 +252,16 @@ impl CPU {
         (self.sr & 0x700) >> 8
     }
     pub fn serve_interrupt_requests(&mut self) {
-        self.irq.extend(self.bus.borrow_mut().interrupt_requests());
+        let requested_irq = self.bus.borrow_mut().interrupt_requests();
+        for irq in requested_irq {
+            if irq.level == 7 || irq.level > self.interrupt_mask() {
+                self.irq.push_back(irq);
+            }
+        }
         if let Some(irq) = self.irq.pop_front() {
             if irq.level == 7 || irq.level > self.interrupt_mask() {
                 println!("Interrupt (level {}) occured!", irq.level);
+                self.irp = true;
                 let trap = Instruction::TRAP { vector: 24 + irq.level as usize };
                 trap.execute(self);
             }
@@ -490,7 +497,6 @@ impl Debugger {
         }
     }
     fn draw_user_interface(&mut self, cpu: &CPU) {
-        println!("{}", clear::All);
         print!("{c}{tl}{cpu}", c = clear::All, tl = cursor::Goto(1, 1), cpu = cpu);
         print!("{tr}{dis}", tr = cursor::Goto(10, 10), dis = self.disassembly);
         print!("{r} Next instruction: {n}", r = cursor::Goto(37, 3), n = cpu.nxt.as_asm(cpu));

@@ -311,17 +311,19 @@ const MEMORY_LAYOUT: [(usize, OpResult); 14] = [
 pub fn st1040() -> Configuration {
     let mut bus = Bus::new();
     bus.attach(Ram::new(0xff8000));
-    bus.attach(Monitor::new(0x3f8000, 0xffff8201));
-    bus.attach(Blitter::new(0xffff8a00));
-    bus.attach(MMU::new(0xffff8001));
-    bus.attach(SoundGenerator::new(0xffff8800));
-    bus.attach(MultiFunctionPeripheral::new(0xfffffa01));
-    bus.attach(Keyboard::new(0xfffffc00));
-    bus.attach(MIDIAdapter::new(0xfffffc04));
-    bus.attach(Microwire::new(0xffff8922));
-    bus.attach(DMASoundSystem::new(0xffff8900));
-    bus.attach(SystemControlUnit::new(0xffff8e00));
-    bus.attach(JoystickPort::new(0xffff9200));
+    bus.attach(Monitor::new(0x3f8000, 0xff8201));
+    bus.attach(Blitter::new(0xff8a00));
+    bus.attach(MMU::new(0xff8000));
+    bus.attach(Floppy::new(0xff8600, "examples/ST0001 Mono Demos.st"));
+    bus.attach(SoundGenerator::new(0xff8800));
+    bus.attach(MultiFunctionPeripheral::new(0xfffa01));
+    bus.attach(Keyboard::new(0xfffc00));
+    bus.attach(MIDIAdapter::new(0xfffc04));
+    bus.attach(Microwire::new(0xff8922));
+    bus.attach(DMASoundSystem::new(0xff8900));
+    bus.attach(SystemControlUnit::new(0xff8e00));
+    bus.attach(JoystickPort::new(0xff9200));
+    bus.attach(RealTimeClock::new(0xfffc20));
 
     Configuration {
         base_address: BASE_ADDRESS,

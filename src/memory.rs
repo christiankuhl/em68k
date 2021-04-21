@@ -85,7 +85,7 @@ impl Bus {
         self.devices.push((device.memconfig(), device));
     }
     pub fn read(&mut self, address: usize, size: Size) -> OpResult {
-        let trunc_address = address & 0xffffffff;
+        let trunc_address = address & 0xffffff;
         for (range, device) in &mut self.devices {
             for (fromaddr, toaddr) in range {
                 if *fromaddr <= trunc_address && *toaddr > trunc_address {
@@ -93,11 +93,11 @@ impl Bus {
                 }
             }
         } 
-        panic!(format!("Address {:08x} is not assigned!", address))
+        panic!(format!("Address {:08x} is not assigned!", trunc_address))
     }
     pub fn write(&mut self, address: usize, result: OpResult) {
         let mut written = false;
-        let trunc_address = address & 0xffffffff;
+        let trunc_address = address & 0xffffff;
         for (range, device) in &mut self.devices {
             let mut remap = false;
             for (fromaddr, toaddr) in range.iter() {
@@ -118,7 +118,7 @@ impl Bus {
             }
         }
         if !written {
-            panic!(format!("Address {:08x} is not assigned!", address))
+            panic!(format!("Address {:08x} is not assigned!", trunc_address))
         }
     }
     pub fn interrupt_requests(&mut self) -> VecDeque<IRQ> {
