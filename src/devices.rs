@@ -553,6 +553,125 @@ impl Device for MultiFunctionPeripheral {
     fn poll(&self) -> Signal { Signal::Ok }
 }
 
+// $FFFFFA01  r/w  |x.xx...x|          MFP GP I/O
+//                  | ||   |__________ Parallel port status
+//                  | ||______________ WD1772 active
+//                  | |_______________ Interrupt
+//                  |_________________ Mono monitor
+
+// $FFFFFA03  r/w  |xxxxxxxx|          Active edge
+//                  ||||||||__________ Centronics busy
+//                  |||||||___________ RS-232 Data Carrier Detect (DCD)
+//                  ||||||____________ RS-232 Clear To Send (CTS)
+//                  |||||_____________ Reserved
+//                  ||||______________ ACIA Interrupt
+//                  |||_______________ FDC/HDC interrupt
+//                  ||________________ RS-232 ring indicator
+//                  |_________________ Mono monitor detect
+
+// $FFFFFA05  r/w  |xxxxxxxx|          Data direction (all bits IN/OUT)
+
+// $FFFFFA07  r/w  |xxxxxxxx|          Interrupt enable A
+// $FFFFFA0B  r/w  |xxxxxxxx|          Interrupt pending A
+// $FFFFFA0F  r/w  |xxxxxxxx|          Interrupt in-service A
+// $FFFFFA13  r/w  |xxxxxxxx|          Interrupt mask A
+//                  ||||||||__________ MFP timer B (ENABLE/DISABLE)
+//                  |||||||___________ RS-232 transmit error
+//                  ||||||____________ RS-232 transmit buffer empty
+//                  |||||_____________ RS-232 receive error
+//                  ||||______________ RS-232 receive buffer full
+//                  |||_______________ MFP timer A
+//                  ||________________ RS-232 ring indicator
+//                  |_________________ Monochrome detect
+ 
+// $FFFFFA09  r/w  |xxxxxxxx|          Interrupt enable B
+// $FFFFFA0D  r/w  |xxxxxxxx|          Interrupt pending B
+// $FFFFFA11  r/w  |xxxxxxxx|          Interrupt in-service B
+// $FFFFFA15  r/w  |xxxxxxxx|          Interrupt mask B
+//                  ||||||||__________ Centronics busy (ENABLE/DISABLE)
+//                  |||||||___________ RS-232 Data Carrier Detect (DCD)
+//                  ||||||____________ RS-232 Clear To Send (CTS)
+//                  |||||_____________ Blitter done
+//                  ||||______________ MFP Timer D (USART)
+//                  |||_______________ MFP timer C (200Hz clock)
+//                  ||________________ ACIA interrupt
+//                  |_________________ FDC/HDC controller
+
+// $FFFFFA17  r/w  |....x...|          Vector base
+//                      |_____________ Manual/Auto end of interrupts
+
+// $FFFFFA19  r/w  |....xxxx|          Timer A control
+// $FFFFFA1B  r/w  |....xxxx|          Timer B control
+//                      |_____________ Timer delay mode (see table)
+
+//                                     Value  Delay (divider)
+//                                     %0000  Timer stop
+//                                     %0001  4
+//                                     %0010  10
+//                                     %0011  16
+//                                     %0100  50
+//                                     %0101  64
+//                                     %0110  100
+//                                     %0111  200
+//                                     %1000  Event count mode
+//                                     %1xxx  Pulse extension mode (delay as above)
+
+// $FFFFFA1D  r/w  |.xxx.xxx|          Timers C&D control
+//                   |   |____________ Timer D delay mode (see table)
+//                   |________________ Timer C delay mode (see table)
+
+//                                     Value  Delay (divider)
+//                                     %000   Timer stop
+//                                     %001   4
+//                                     %010   10
+//                                     %011   16
+//                                     %100   50
+//                                     %101   64
+//                                     %110   100
+//                                     %111   200
+
+// $FFFFFA1F  r/w  |xxxxxxxx|          Timer A data
+// $FFFFFA21  r/w  |xxxxxxxx|          Timer B data
+// $FFFFFA23  r/w  |xxxxxxxx|          Timer C data
+// $FFFFFA25  r/w  |xxxxxxxx|          Timer D data
+// $FFFFFA27  r/w  |xxxxxxxx|          Sync character
+
+// $FFFFFA29  r/w  |xxxxxxx.|          USART control register
+//                  | | |||___________ Parity odd/even
+//                  | | ||____________ Parity enable/disable
+//                  | | |_____________ Protocol A (see table)
+//                  | |_______________ Protocol B (see table)
+//                  |_________________ Clock divide by 16 off/on
+
+//                 Protocol A                        Protocol B
+//                 Value  Stop  Start  Format        Value  Data
+//                 %00    0     0      Synchronous	  %00    8
+//                 %01    1     1      Asynchronous  %01    7
+//                 %10    1     1.5    Asynchronous  %10    6
+//                 %11    1     2      Asynchronous  %11    5
+
+// $FFFFFA2B  r/w  |xxxxxxxx|          Receiver status
+//                  ||||||||__________ Receiver enable bit
+//                  |||||||___________ Synchronous strip enable
+//                  ||||||____________ Match/Character in progress
+//                  |||||_____________ Found, Search/Break detected
+//                  ||||______________ Frame error
+//                  |||_______________ Parity error
+//                  ||________________ Frame error
+//                  |_________________ Overrun error
+
+// $FFFFFA2D  r/w  |xxxxxxxx|          Transmitter status
+//                  ||||||||__________ Transmitter enable bit
+//                  |||||||___________ Low bit
+//                  ||||||____________ High bit
+//                  |||||_____________ Break
+//                  ||||______________ End of transmission
+//                  |||_______________ Auto turnaround
+//                  ||________________ Underrun error
+//                  |_________________ Buffer empty
+
+// $FFFFFA2F  r/w  |xxxxxxxx|          USART data
+
 struct InterruptHandler {
     ctrl_register: usize
 }
@@ -570,7 +689,8 @@ impl Device for InterruptHandler {
     fn read(&mut self, _address: usize, _size: Size) -> OpResult {
         OpResult::Byte(0)
     }
-    fn write(&mut self, _address: usize, _result: OpResult) -> Signal {
+    fn write(&mut self, _address: usize, result: OpResult) -> Signal {
+        println!("Interrupt handler received {}", result);
         Signal::Ok
     }
     fn interrupt_request(&mut self) -> Option<IRQ> { None }
@@ -796,121 +916,27 @@ impl Device for RealTimeClock {
 }
 
 
-// $FFFFFA01  r/w  |x.xx...x|          MFP GP I/O
-//                  | ||   |__________ Parallel port status
-//                  | ||______________ WD1772 active
-//                  | |_______________ Interrupt
-//                  |_________________ Mono monitor
+pub struct CartridgeROM {
+    address: usize,
+}
 
-// $FFFFFA03  r/w  |xxxxxxxx|          Active edge
-//                  ||||||||__________ Centronics busy
-//                  |||||||___________ RS-232 Data Carrier Detect (DCD)
-//                  ||||||____________ RS-232 Clear To Send (CTS)
-//                  |||||_____________ Reserved
-//                  ||||______________ ACIA Interrupt
-//                  |||_______________ FDC/HDC interrupt
-//                  ||________________ RS-232 ring indicator
-//                  |_________________ Mono monitor detect
+impl CartridgeROM {
+    pub fn new(address: usize) -> Box<Self> {
+        Box::new(Self { address })
+    }
+}
 
-// $FFFFFA05  r/w  |xxxxxxxx|          Data direction (all bits IN/OUT)
+impl Device for CartridgeROM {
+    fn memconfig(&self) -> MemoryRange {
+        vec![(self.address, self.address + 0x10000)]
+    }
+    fn read(&mut self, _address: usize, size: Size) -> OpResult {
+        size.from(0xffffffff as u32)
+    }
+    fn write(&mut self, _address: usize, _result: OpResult) -> Signal {
+        panic!("Memory not writable!")
+    }
+    fn interrupt_request(&mut self) -> Option<IRQ> { None }
+    fn poll(&self) -> Signal { Signal::Ok }
+}
 
-// $FFFFFA07  r/w  |xxxxxxxx|          Interrupt enable A
-// $FFFFFA0B  r/w  |xxxxxxxx|          Interrupt pending A
-// $FFFFFA0F  r/w  |xxxxxxxx|          Interrupt in-service A
-// $FFFFFA13  r/w  |xxxxxxxx|          Interrupt mask A
-//                  ||||||||__________ MFP timer B (ENABLE/DISABLE)
-//                  |||||||___________ RS-232 transmit error
-//                  ||||||____________ RS-232 transmit buffer empty
-//                  |||||_____________ RS-232 receive error
-//                  ||||______________ RS-232 receive buffer full
-//                  |||_______________ MFP timer A
-//                  ||________________ RS-232 ring indicator
-//                  |_________________ Monochrome detect
- 
-// $FFFFFA09  r/w  |xxxxxxxx|          Interrupt enable B
-// $FFFFFA0D  r/w  |xxxxxxxx|          Interrupt pending B
-// $FFFFFA11  r/w  |xxxxxxxx|          Interrupt in-service B
-// $FFFFFA15  r/w  |xxxxxxxx|          Interrupt mask B
-//                  ||||||||__________ Centronics busy (ENABLE/DISABLE)
-//                  |||||||___________ RS-232 Data Carrier Detect (DCD)
-//                  ||||||____________ RS-232 Clear To Send (CTS)
-//                  |||||_____________ Blitter done
-//                  ||||______________ MFP Timer D (USART)
-//                  |||_______________ MFP timer C (200Hz clock)
-//                  ||________________ ACIA interrupt
-//                  |_________________ FDC/HDC controller
-
-// $FFFFFA17  r/w  |....x...|          Vector base
-//                      |_____________ Manual/Auto end of interrupts
-
-// $FFFFFA19  r/w  |....xxxx|          Timer A control
-// $FFFFFA1B  r/w  |....xxxx|          Timer B control
-//                      |_____________ Timer delay mode (see table)
-
-//                                     Value  Delay (divider)
-//                                     %0000  Timer stop
-//                                     %0001  4
-//                                     %0010  10
-//                                     %0011  16
-//                                     %0100  50
-//                                     %0101  64
-//                                     %0110  100
-//                                     %0111  200
-//                                     %1000  Event count mode
-//                                     %1xxx  Pulse extension mode (delay as above)
-
-// $FFFFFA1D  r/w  |.xxx.xxx|          Timers C&D control
-//                   |   |____________ Timer D delay mode (see table)
-//                   |________________ Timer C delay mode (see table)
-
-//                                     Value  Delay (divider)
-//                                     %000   Timer stop
-//                                     %001   4
-//                                     %010   10
-//                                     %011   16
-//                                     %100   50
-//                                     %101   64
-//                                     %110   100
-//                                     %111   200
-
-// $FFFFFA1F  r/w  |xxxxxxxx|          Timer A data
-// $FFFFFA21  r/w  |xxxxxxxx|          Timer B data
-// $FFFFFA23  r/w  |xxxxxxxx|          Timer C data
-// $FFFFFA25  r/w  |xxxxxxxx|          Timer D data
-// $FFFFFA27  r/w  |xxxxxxxx|          Sync character
-
-// $FFFFFA29  r/w  |xxxxxxx.|          USART control register
-//                  | | |||___________ Parity odd/even
-//                  | | ||____________ Parity enable/disable
-//                  | | |_____________ Protocol A (see table)
-//                  | |_______________ Protocol B (see table)
-//                  |_________________ Clock divide by 16 off/on
-
-//                 Protocol A                        Protocol B
-//                 Value  Stop  Start  Format        Value  Data
-//                 %00    0     0      Synchronous	  %00    8
-//                 %01    1     1      Asynchronous  %01    7
-//                 %10    1     1.5    Asynchronous  %10    6
-//                 %11    1     2      Asynchronous  %11    5
-
-// $FFFFFA2B  r/w  |xxxxxxxx|          Receiver status
-//                  ||||||||__________ Receiver enable bit
-//                  |||||||___________ Synchronous strip enable
-//                  ||||||____________ Match/Character in progress
-//                  |||||_____________ Found, Search/Break detected
-//                  ||||______________ Frame error
-//                  |||_______________ Parity error
-//                  ||________________ Frame error
-//                  |_________________ Overrun error
-
-// $FFFFFA2D  r/w  |xxxxxxxx|          Transmitter status
-//                  ||||||||__________ Transmitter enable bit
-//                  |||||||___________ Low bit
-//                  ||||||____________ High bit
-//                  |||||_____________ Break
-//                  ||||______________ End of transmission
-//                  |||_______________ Auto turnaround
-//                  ||________________ Underrun error
-//                  |_________________ Buffer empty
-
-// $FFFFFA2F  r/w  |xxxxxxxx|          USART data

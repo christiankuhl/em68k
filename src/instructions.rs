@@ -164,11 +164,9 @@ impl Instruction {
                     let mut ssp = _ssp.as_ref().borrow_mut();
                     let mut ram_handle = MemoryHandle::new(None, Some(*ssp as usize), None, cpu);
                     cpu.sr = ram_handle.read(Word).inner();
-                    println!("Pulled SR {:04x} from {:08x}", cpu.sr, *ssp);
                     *ssp += 2;
                     ram_handle.offset(2);
                     cpu.pc = ram_handle.read(Long).inner();
-                    println!("Pulled PC {:08x} from {:08x}", cpu.pc, *ssp);
                     *ssp += 4;
                 }
             }
@@ -243,11 +241,9 @@ impl Instruction {
                 *ssp -= 4;
                 let mut ram_handle = MemoryHandle::new(None, Some(*ssp as usize), None, cpu);
                 ram_handle.write(OpResult::Long(cpu.pc));
-                // println!("Put PC {:08x} at {:08x}", cpu.pc, *ssp);
                 *ssp -= 2;
                 ram_handle.offset(-2);
                 ram_handle.write(OpResult::Word(cpu.sr as u16));
-                // println!("Put SR {:04x} at {:08x}", cpu.sr, *ssp);
                 ram_handle = MemoryHandle::new(None, Some(4 * vector as usize), None, cpu);
                 cpu.pc = ram_handle.read(Long).inner();
             }

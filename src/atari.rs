@@ -310,6 +310,7 @@ const MEMORY_LAYOUT: [(usize, OpResult); 14] = [
 
 pub fn st1040() -> Configuration {
     let mut bus = Bus::new();
+    bus.attach(CartridgeROM::new(0xfa0000));
     bus.attach(Ram::new(0xff8000));
     bus.attach(Monitor::new(0x3f8000, 0xff8201));
     bus.attach(Blitter::new(0xff8a00));

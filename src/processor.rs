@@ -31,7 +31,7 @@ pub struct CPU {
     pub irp: bool,              // Interrupt in process (debugger)
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct IRQ {
     pub level: u32
 }
