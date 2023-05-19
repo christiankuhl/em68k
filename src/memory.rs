@@ -93,7 +93,7 @@ impl Bus {
                 }
             }
         } 
-        panic!(format!("Address {:08x} is not assigned!", trunc_address))
+        panic!("Address {:08x} is not assigned!", trunc_address)
     }
     pub fn write(&mut self, address: usize, result: OpResult) {
         let mut written = false;
@@ -118,7 +118,7 @@ impl Bus {
             }
         }
         if !written {
-            panic!(format!("Address {:08x} is not assigned!", trunc_address))
+            panic!("Address {:08x} is not assigned!", trunc_address)
         }
     }
     pub fn interrupt_requests(&mut self) -> VecDeque<IRQ> {

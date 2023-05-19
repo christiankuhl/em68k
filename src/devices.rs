@@ -21,7 +21,7 @@ pub enum Signal {
 
 impl PartialEq for Signal {
     fn eq(&self, other: &Signal) -> bool {
-        discriminant(&self) == discriminant(&other)
+        discriminant(self) == discriminant(other)
     }
 }
 

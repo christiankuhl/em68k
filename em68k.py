@@ -11,7 +11,7 @@ BUILDCOMMANDS = {
     },
     "run": {
         1: ["cargo", "run", "--release", "--"],
-        0: ['cargo', 'test', '--test', 'tests', '--'],
+        0: ['cargo', 'test', '--test', 'tests', '--', "--nocapture"],
     },
 }
 
