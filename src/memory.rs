@@ -97,7 +97,7 @@ impl Bus {
     }
     pub fn write(&mut self, address: usize, result: OpResult) {
         let mut written = false;
-        let trunc_address = address & 0xffffff;
+        let trunc_address = address & 0xffffffff;
         for (range, device) in &mut self.devices {
             let mut remap = false;
             for (fromaddr, toaddr) in range.iter() {
